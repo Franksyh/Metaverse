@@ -1727,6 +1727,69 @@ textarea {
   font-size: 12px;
 }
 
+.remote-access-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid rgba(8, 127, 123, 0.24);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.remote-access-panel h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.remote-access-panel p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.remote-url-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.remote-url-box input {
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--panel-soft);
+}
+
+.device-support-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.device-support-grid span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  color: var(--teal);
+  background: #e4f3ef;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.device-support-grid svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
 .metric-card,
 .launch-grid article {
   display: grid;
@@ -2097,9 +2160,15 @@ textarea {
   }
 
   .map-caption,
-  .result-toolbar {
+  .result-toolbar,
+  .dynamic-banner {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .remote-url-box,
+  .device-support-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .profile-photo {
@@ -2134,7 +2203,9 @@ textarea {
   .composer-tools,
   .nearby-actions,
   .moment-actions,
-  .safety-actions {
+  .safety-actions,
+  .remote-url-box,
+  .device-support-grid {
     display: grid;
     grid-template-columns: 1fr;
   }

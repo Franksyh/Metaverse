@@ -1759,6 +1759,26 @@ function renderGrowth() {
         <span>刷新</span>
       </button>
     </div>
+    <div class="remote-access-panel">
+      <div>
+        <span class="eyebrow">Remote Access</span>
+        <h3>手機、電腦、網頁版遠端連線</h3>
+        <p>部署後使用同一個 Netlify 公開網址即可在手機瀏覽器、桌機瀏覽器與安裝式 PWA 開啟。動態資料會從雲端 API 同步。</p>
+      </div>
+      <div class="remote-url-box">
+        <input id="remoteUrlInput" value="${escapeHtml(location.origin.startsWith("http") ? location.origin : "部署後顯示公開網址")}" readonly />
+        <button class="primary-action" type="button" id="copyRemoteUrlBtn">
+          <i data-lucide="copy"></i>
+          <span>複製連結</span>
+        </button>
+      </div>
+      <div class="device-support-grid">
+        <span><i data-lucide="smartphone"></i>手機版</span>
+        <span><i data-lucide="monitor"></i>電腦版</span>
+        <span><i data-lucide="globe-2"></i>網頁遠端</span>
+        <span><i data-lucide="wifi"></i>雲端 API</span>
+      </div>
+    </div>
     <div class="growth-metrics">
       <div class="metric-card">
         <span>模擬在線人數</span>
@@ -1839,7 +1859,18 @@ function renderGrowth() {
     syncDynamicData();
     showToast("正在刷新動態資料");
   });
+  $("#copyRemoteUrlBtn")?.addEventListener("click", copyRemoteUrl);
   syncIcons();
+}
+
+async function copyRemoteUrl() {
+  const value = $("#remoteUrlInput")?.value || location.href;
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast("遠端連線網址已複製");
+  } catch {
+    showToast(`遠端網址：${value}`);
+  }
 }
 
 async function handleWaitlistSubmit(event) {
