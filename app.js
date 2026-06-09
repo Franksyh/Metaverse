@@ -172,6 +172,7 @@ const quizQuestions = [
 ];
 
 const memoryValues = ["咖啡", "電影", "音樂", "料理", "展覽", "夜景"];
+const STORAGE_KEY = "pair-room-state-v2";
 
 const userProfile = {
   name: "Frank",
@@ -246,6 +247,29 @@ const moments = [
   },
 ];
 
+const launchChecklist = [
+  {
+    title: "公開網站",
+    detail: "Netlify 可讓多人同時瀏覽同一個前端網站。",
+    done: true,
+  },
+  {
+    title: "候補表單",
+    detail: "使用 Netlify Forms 收集測試者、合作與商務需求。",
+    done: true,
+  },
+  {
+    title: "本機狀態保存",
+    detail: "個人檔案、動態與聊天示範資料會保存在同一台裝置。",
+    done: true,
+  },
+  {
+    title: "真正多人資料同步",
+    detail: "需要後端登入、資料庫與即時通訊才能讓不同使用者共享配對和聊天。",
+    done: false,
+  },
+];
+
 const state = {
   activeView: "rooms",
   currentRoomId: "late-night",
@@ -258,6 +282,12 @@ const state = {
   aiTargetId: "mika",
   boostEndsAt: null,
   boostViews: 184,
+  waitlistCount: 48,
+  dynamicMode: "local",
+  lastSyncAt: null,
+  dynamicMetrics: null,
+  dynamicRecommendations: [],
+  installPrompt: null,
   superLikes: 3,
   sensitiveFilter: true,
   slowMode: true,
@@ -352,6 +382,62 @@ function showToast(message) {
   }, 2600);
 }
 
+function saveAppState() {
+  const snapshot = {
+    userProfile,
+    moments,
+    conversations,
+    state: {
+      discoverFilters: state.discoverFilters,
+      nearbyMode: state.nearbyMode,
+      momentFilter: state.momentFilter,
+      aiTargetId: state.aiTargetId,
+      boostEndsAt: state.boostEndsAt,
+      boostViews: state.boostViews,
+      waitlistCount: state.waitlistCount,
+      superLikes: state.superLikes,
+      sensitiveFilter: state.sensitiveFilter,
+      slowMode: state.slowMode,
+      blockedCount: state.blockedCount,
+    },
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Storage can be unavailable in private windows; the app still works without persistence.
+  }
+}
+
+function scheduleSave() {
+  window.clearTimeout(scheduleSave.timer);
+  scheduleSave.timer = window.setTimeout(saveAppState, 180);
+}
+
+function loadSavedState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved.userProfile) {
+      Object.assign(userProfile, saved.userProfile);
+      userProfile.verifications = { ...userProfile.verifications, ...(saved.userProfile.verifications || {}) };
+      userProfile.interests = Array.isArray(saved.userProfile.interests) ? saved.userProfile.interests : userProfile.interests;
+    }
+    if (Array.isArray(saved.moments)) {
+      moments.splice(0, moments.length, ...saved.moments);
+    }
+    if (Array.isArray(saved.conversations)) {
+      conversations.splice(0, conversations.length, ...saved.conversations);
+    }
+    if (saved.state) {
+      Object.assign(state, saved.state);
+      state.discoverFilters = { ...defaultDiscoverFilters, ...(saved.state.discoverFilters || {}) };
+    }
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
 function setView(view) {
   state.activeView = view;
   $$(".nav-item").forEach((button) => {
@@ -381,10 +467,56 @@ function setView(view) {
   if (view === "ai") {
     renderAiBoost();
   }
+  if (view === "growth") {
+    renderGrowth();
+  }
   if (view === "safety") {
     renderSafetyCenter();
   }
   syncIcons();
+}
+
+function applyDynamicData(data) {
+  if (!data) return;
+  state.dynamicMode = data.mode || "netlify-functions";
+  state.lastSyncAt = data.generatedAt || new Date().toISOString();
+  state.dynamicMetrics = data.metrics || null;
+  state.dynamicRecommendations = Array.isArray(data.recommendations) ? data.recommendations : [];
+
+  if (state.dynamicMetrics?.waitlistCount) {
+    state.waitlistCount = state.dynamicMetrics.waitlistCount;
+  }
+
+  if (Array.isArray(data.rooms)) {
+    data.rooms.forEach((liveRoom) => {
+      const room = rooms.find((item) => item.id === liveRoom.id);
+      if (room && Number.isFinite(liveRoom.active)) {
+        room.active = Math.min(room.capacity, liveRoom.active);
+      }
+    });
+  }
+
+  const onlineNow = state.dynamicMetrics?.onlineNow || 128;
+  $("#statusText").textContent = `Netlify 動態同步中：${onlineNow} 位新朋友在線`;
+
+  renderRooms(state.globalSearch);
+  renderRoomStage();
+  if (state.activeView === "growth") renderGrowth();
+  if (state.activeView === "ai") renderAiBoost();
+}
+
+async function syncDynamicData() {
+  try {
+    const response = await fetch("/api/app-data", {
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) throw new Error("Dynamic API unavailable");
+    const data = await response.json();
+    applyDynamicData(data);
+  } catch {
+    state.dynamicMode = "local";
+    if (state.activeView === "growth") renderGrowth();
+  }
 }
 
 function renderRooms(filter = "") {
@@ -656,6 +788,7 @@ function updateUserProfileFromField(event) {
   syncProfileMini();
   updateProfileCompletion();
   renderProfilePreview();
+  scheduleSave();
 }
 
 function handlePhotoUpload(event) {
@@ -666,6 +799,7 @@ function handlePhotoUpload(event) {
     userProfile.photo = reader.result;
     syncProfileMini();
     renderProfileEditor();
+    scheduleSave();
     showToast("照片已更新");
   });
   reader.readAsDataURL(file);
@@ -967,6 +1101,7 @@ function updateDiscoverFilter(event) {
   const field = event.target.dataset.filter;
   state.discoverFilters[field] = event.target.type === "number" ? Number(event.target.value) : event.target.value;
   renderDiscoverResults();
+  scheduleSave();
 }
 
 function renderDiscoverResults() {
@@ -1075,6 +1210,7 @@ function startConversationWith(personId, starter) {
   }
   state.activeConversationId = conversationId;
   setView("chat");
+  scheduleSave();
   showToast(`已開啟和 ${person.name} 的聊天室`);
 }
 
@@ -1235,6 +1371,7 @@ function likeProfile(isSuper) {
   }
   showToast(`${isSuper ? "超喜歡" : "配對"}成功，已建立聊天室`);
   state.activeConversationId = conversationId;
+  scheduleSave();
   nextProfile();
 }
 
@@ -1307,6 +1444,7 @@ function sendMessage(text) {
   if (!active || !text.trim()) return;
   active.messages.push({ from: "Frank", time: currentTime(), text: text.trim() });
   renderChat();
+  scheduleSave();
   window.setTimeout(() => {
     const replies = active.type === "room"
       ? ["這題很可以，等等也丟到房間一起聊。", "我想聽更多，這個方向滿有趣。", "有人也有類似經驗嗎？"]
@@ -1317,6 +1455,7 @@ function sendMessage(text) {
       text: replies[Math.floor(Math.random() * replies.length)],
     });
     renderChat();
+    scheduleSave();
   }, 700);
 }
 
@@ -1404,12 +1543,14 @@ function handleMomentAction(action, momentId) {
   if (action === "like") {
     moment.likes += 1;
     renderMoments();
+    scheduleSave();
     showToast("已按讚這則動態");
     return;
   }
   if (action === "comment") {
     moment.comments.push(`${userProfile.name}：這個話題我想多聽一點`);
     renderMoments();
+    scheduleSave();
     showToast("已新增一則留言");
     return;
   }
@@ -1443,6 +1584,7 @@ function handleMomentSubmit(event) {
   $("#momentForm").reset();
   state.momentFilter = "全部";
   renderMoments();
+  scheduleSave();
   showToast("動態已發布");
 }
 
@@ -1579,6 +1721,7 @@ function handleAiAction(action) {
   if (action === "super-pack") {
     state.superLikes += 5;
     renderAiBoost();
+    scheduleSave();
     showToast("已補充 5 個超喜歡");
     return;
   }
@@ -1590,7 +1733,166 @@ function startBoost() {
   state.boostEndsAt = Date.now() + 30 * 60 * 1000;
   state.boostViews += 96;
   if ($("#boostPanel")) renderAiBoost();
+  scheduleSave();
   showToast("Boost 已啟動，接下來 30 分鐘提高曝光");
+}
+
+function renderGrowth() {
+  const readyCount = launchChecklist.filter((item) => item.done).length;
+  const onlineNow = state.dynamicMetrics?.onlineNow || rooms.reduce((sum, room) => sum + room.active, 0) + 128;
+  const matchesToday = state.dynamicMetrics?.matchesToday || 64;
+  const messagesPerHour = state.dynamicMetrics?.messagesPerHour || 420;
+  const completion = profileCompletion();
+  $("#growthPanel").innerHTML = `
+    <div class="panel-title">
+      <i data-lucide="line-chart"></i>
+      <h3>產品優化儀表板</h3>
+    </div>
+    <div class="dynamic-banner ${state.dynamicMode === "netlify-functions" ? "is-live" : ""}">
+      <i data-lucide="${state.dynamicMode === "netlify-functions" ? "cloud-check" : "cloud-off"}"></i>
+      <div>
+        <strong>${state.dynamicMode === "netlify-functions" ? "已連線 Netlify Functions" : "使用本機示範資料"}</strong>
+        <span>${state.lastSyncAt ? `最後同步 ${new Date(state.lastSyncAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}` : "部署後會自動讀取動態 API"}</span>
+      </div>
+      <button class="ghost-action" type="button" id="refreshDynamicBtn">
+        <i data-lucide="refresh-cw"></i>
+        <span>刷新</span>
+      </button>
+    </div>
+    <div class="growth-metrics">
+      <div class="metric-card">
+        <span>模擬在線人數</span>
+        <strong>${onlineNow}</strong>
+        <p>由伺服器端 API 回傳，展示多人同時瀏覽與語音房熱度。</p>
+      </div>
+      <div class="metric-card">
+        <span>今日配對</span>
+        <strong>${matchesToday}</strong>
+        <p>適合觀察配對漏斗和推薦排序成效。</p>
+      </div>
+      <div class="metric-card">
+        <span>每小時訊息</span>
+        <strong>${messagesPerHour}</strong>
+        <p>可作為聊天室與防騷擾機制的容量指標。</p>
+      </div>
+      <div class="metric-card">
+        <span>候補名單</span>
+        <strong>${state.waitlistCount}</strong>
+        <p>透過動態 API 與 Netlify Forms 收集測試者。</p>
+      </div>
+    </div>
+    <div class="growth-metrics compact">
+      <div class="metric-card">
+        <span>檔案完成度</span>
+        <strong>${completion}%</strong>
+        <p>完成照片、興趣、介紹和驗證可提升配對品質。</p>
+      </div>
+      <div class="metric-card">
+        <span>上線準備</span>
+        <strong>${readyCount}/${launchChecklist.length}</strong>
+        <p>前端、表單與動態 API 已就緒。</p>
+      </div>
+    </div>
+    <div class="server-recommendations">
+      ${(state.dynamicRecommendations.length ? state.dynamicRecommendations : ["部署到 Netlify 後，這裡會由 Functions 回傳即時營運建議。"])
+        .map(
+          (tip) => `
+            <span>
+              <i data-lucide="sparkles"></i>
+              ${escapeHtml(tip)}
+            </span>
+          `,
+        )
+        .join("")}
+    </div>
+    <div class="launch-grid">
+      <article>
+        <h3>目前可多人使用的部分</h3>
+        <p>任何人都可以透過公開網址同時瀏覽網站、查看功能、填寫候補表單。這適合產品展示、找測試者與收集需求。</p>
+      </article>
+      <article>
+        <h3>真正多人互動還需要</h3>
+        <p>登入系統、資料庫、即時聊天室、配對紀錄、照片儲存、審核後台與隱私權設定。這些需要後端服務接入。</p>
+      </article>
+      <article>
+        <h3>建議下一步</h3>
+        <p>先用候補表單驗證需求，再加入 Supabase/Firebase 或 Netlify Blobs + Functions，讓配對、聊天和動態跨使用者同步。</p>
+      </article>
+    </div>
+    <div class="launch-checklist">
+      ${launchChecklist
+        .map(
+          (item) => `
+            <div class="${item.done ? "is-done" : ""}">
+              <i data-lucide="${item.done ? "check-circle-2" : "circle-dashed"}"></i>
+              <span>
+                <strong>${item.title}</strong>
+                <small>${item.detail}</small>
+              </span>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+  $("#refreshDynamicBtn")?.addEventListener("click", () => {
+    syncDynamicData();
+    showToast("正在刷新動態資料");
+  });
+  syncIcons();
+}
+
+async function handleWaitlistSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  try {
+    const payload = Object.fromEntries(data.entries());
+    const apiResponse = await fetch("/api/waitlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!apiResponse.ok) throw new Error("Dynamic waitlist unavailable");
+
+    fetch("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(data).toString(),
+    }).catch(() => {});
+
+    state.waitlistCount += 1;
+    form.reset();
+    renderGrowth();
+    scheduleSave();
+    showToast("已送出候補資料，動態 API 已接收");
+  } catch {
+    showToast("送出失敗，請稍後再試");
+  }
+}
+
+async function installApp() {
+  if (!state.installPrompt) {
+    showToast("瀏覽器尚未提供安裝提示，可先將網站加入書籤");
+    return;
+  }
+  state.installPrompt.prompt();
+  await state.installPrompt.userChoice;
+  state.installPrompt = null;
+}
+
+function registerPwa() {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    state.installPrompt = event;
+    if (state.activeView === "growth") {
+      showToast("此網站可以安裝到裝置");
+    }
+  });
+
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  }
 }
 
 function renderSafetyCenter() {
@@ -1676,6 +1978,7 @@ function renderSafetyCenter() {
       userProfile.verifications[button.dataset.verifyStep] = true;
       renderSafetyCenter();
       renderProfilePreview();
+      scheduleSave();
       showToast("驗證狀態已更新");
     });
   });
@@ -1689,24 +1992,28 @@ function handleSafetyAction(action) {
   if (action === "sensitive") {
     state.sensitiveFilter = !state.sensitiveFilter;
     renderSafetyCenter();
+    scheduleSave();
     showToast(state.sensitiveFilter ? "敏感訊息過濾已開啟" : "敏感訊息過濾已關閉");
     return;
   }
   if (action === "slow") {
     state.slowMode = !state.slowMode;
     renderSafetyCenter();
+    scheduleSave();
     showToast(state.slowMode ? "慢速聊天已開啟" : "慢速聊天已關閉");
     return;
   }
   if (action === "report") {
     state.blockedCount += 1;
     renderSafetyCenter();
+    scheduleSave();
     showToast("已建立檢舉紀錄，安全團隊會優先審核");
     return;
   }
   if (action === "block") {
     state.blockedCount += 1;
     renderSafetyCenter();
+    scheduleSave();
     showToast("已封鎖示範帳號並停止推薦");
     return;
   }
@@ -1872,6 +2179,7 @@ function wireEvents() {
     button.addEventListener("click", () => {
       state.nearbyMode = button.dataset.nearbyMode;
       renderNearby();
+      scheduleSave();
     });
   });
 
@@ -1879,6 +2187,7 @@ function wireEvents() {
     button.addEventListener("click", () => {
       state.momentFilter = button.dataset.momentFilter;
       renderMoments();
+      scheduleSave();
     });
   });
 
@@ -1902,9 +2211,13 @@ function wireEvents() {
   $("#resetGamesBtn").addEventListener("click", resetGames);
   $("#momentForm").addEventListener("submit", handleMomentSubmit);
   $("#boostNowBtn").addEventListener("click", startBoost);
+  $("#waitlistForm").addEventListener("submit", handleWaitlistSubmit);
+  $("#installAppBtn").addEventListener("click", installApp);
+  window.addEventListener("beforeunload", saveAppState);
 }
 
 function init() {
+  loadSavedState();
   syncProfileMini();
   renderRooms();
   renderRoomStage();
@@ -1918,8 +2231,12 @@ function init() {
   renderQuiz();
   resetMemory();
   renderAiBoost();
+  renderGrowth();
   renderSafetyCenter();
   wireEvents();
+  registerPwa();
+  syncDynamicData();
+  window.setInterval(syncDynamicData, 90000);
   syncIcons();
 }
 

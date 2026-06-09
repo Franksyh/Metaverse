@@ -3,7 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="緣房間是一個結合語音房、AI 配對、動態廣場與安全中心的交友產品原型。"
+    />
+    <meta name="theme-color" content="#087f7b" />
     <title>緣房間 | 交友語音配對</title>
+    <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -53,6 +59,10 @@
           <button class="nav-item" data-view="ai">
             <i data-lucide="bot"></i>
             <span>AI</span>
+          </button>
+          <button class="nav-item" data-view="growth">
+            <i data-lucide="line-chart"></i>
+            <span>上線</span>
           </button>
           <button class="nav-item" data-view="safety">
             <i data-lucide="shield-check"></i>
@@ -318,6 +328,66 @@
           <div class="ai-layout">
             <section class="ai-coach-panel" id="aiCoachPanel"></section>
             <aside class="boost-panel" id="boostPanel" aria-live="polite"></aside>
+          </div>
+        </section>
+
+        <section class="view" id="growth-view" aria-labelledby="growthTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Launch Readiness</p>
+              <h2 id="growthTitle">多人使用與上線優化</h2>
+            </div>
+            <button class="ghost-action" type="button" id="installAppBtn">
+              <i data-lucide="download"></i>
+              <span>安裝 App</span>
+            </button>
+          </div>
+
+          <div class="growth-layout">
+            <section class="growth-panel" id="growthPanel" aria-live="polite"></section>
+            <aside class="waitlist-panel">
+              <div class="panel-title">
+                <i data-lucide="user-plus"></i>
+                <h3>候補與合作表單</h3>
+              </div>
+              <form
+                name="pair-room-waitlist"
+                method="POST"
+                data-netlify="true"
+                netlify-honeypot="bot-field"
+                id="waitlistForm"
+              >
+                <input type="hidden" name="form-name" value="pair-room-waitlist" />
+                <p class="hidden-field">
+                  <label>不要填寫這欄 <input name="bot-field" /></label>
+                </p>
+                <label>
+                  <span>姓名或暱稱</span>
+                  <input name="name" required placeholder="Frank" />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input name="email" type="email" required placeholder="name@example.com" />
+                </label>
+                <label>
+                  <span>使用目的</span>
+                  <select name="intent">
+                    <option>想加入測試</option>
+                    <option>想合作推廣</option>
+                    <option>想投放廣告</option>
+                    <option>想了解技術方案</option>
+                  </select>
+                </label>
+                <label>
+                  <span>想補充的需求</span>
+                  <textarea name="message" rows="4" placeholder="例如：希望支援真人登入、即時聊天室、付費會員"></textarea>
+                </label>
+                <button class="primary-action stretch" type="submit">
+                  <i data-lucide="send"></i>
+                  <span>送出</span>
+                </button>
+              </form>
+            </aside>
           </div>
         </section>
 

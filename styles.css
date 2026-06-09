@@ -392,6 +392,8 @@ textarea {
 .moment-card,
 .ai-coach-panel,
 .boost-panel,
+.growth-panel,
+.waitlist-panel,
 .conversation-list,
 .chat-panel,
 .game-panel,
@@ -739,6 +741,8 @@ textarea {
 .moment-card,
 .ai-coach-panel,
 .boost-panel,
+.growth-panel,
+.waitlist-panel,
 .game-panel,
 .safety-item {
   padding: 18px;
@@ -1674,6 +1678,188 @@ textarea {
   gap: 10px;
 }
 
+.growth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.growth-metrics,
+.launch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dynamic-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.dynamic-banner.is-live {
+  border-color: rgba(8, 127, 123, 0.28);
+  background: #e4f3ef;
+}
+
+.dynamic-banner > svg {
+  color: var(--teal);
+}
+
+.dynamic-banner div {
+  min-width: 0;
+  flex: 1;
+}
+
+.dynamic-banner strong,
+.dynamic-banner span {
+  display: block;
+}
+
+.dynamic-banner span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metric-card,
+.launch-grid article {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.metric-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.metric-card strong {
+  color: var(--teal);
+  font-size: 30px;
+}
+
+.metric-card p,
+.launch-grid p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.launch-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.growth-metrics.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.server-recommendations {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.server-recommendations span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  color: #76520e;
+  background: #faefd8;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.server-recommendations svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.launch-grid h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.launch-checklist {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.launch-checklist div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.launch-checklist div.is-done {
+  border-color: rgba(8, 127, 123, 0.28);
+  background: #e4f3ef;
+}
+
+.launch-checklist svg {
+  width: 22px;
+  height: 22px;
+  color: var(--teal);
+}
+
+.launch-checklist strong,
+.launch-checklist small {
+  display: block;
+}
+
+.launch-checklist small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.waitlist-panel form {
+  display: grid;
+  gap: 12px;
+}
+
+.waitlist-panel label {
+  display: grid;
+  gap: 6px;
+}
+
+.waitlist-panel label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.waitlist-panel input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  outline: 0;
+}
+
+.hidden-field {
+  display: none;
+}
+
 .safety-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1805,7 +1991,8 @@ textarea {
   .discover-layout,
   .nearby-layout,
   .ai-layout,
-  .moments-layout {
+  .moments-layout,
+  .growth-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1845,7 +2032,7 @@ textarea {
 
   .main-nav {
     display: grid;
-    grid-template-columns: repeat(10, minmax(66px, 1fr));
+    grid-template-columns: repeat(11, minmax(66px, 1fr));
     gap: 6px;
     overflow-x: auto;
     padding-bottom: 2px;
@@ -1887,6 +2074,9 @@ textarea {
   .games-grid,
   .safety-grid,
   .discover-grid,
+  .growth-metrics,
+  .growth-metrics.compact,
+  .launch-grid,
   .profile-form-grid,
   .filter-grid,
   .ai-advice-grid {
