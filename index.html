@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>緣房間 | 交友語音配對</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">緣</div>
+          <div>
+            <p class="eyebrow">Pair Room</p>
+            <h1>緣房間</h1>
+          </div>
+        </div>
+
+        <nav class="main-nav" aria-label="主要功能">
+          <button class="nav-item is-active" data-view="rooms">
+            <i data-lucide="radio"></i>
+            <span>房間</span>
+          </button>
+          <button class="nav-item" data-view="profile">
+            <i data-lucide="user-round"></i>
+            <span>檔案</span>
+          </button>
+          <button class="nav-item" data-view="match">
+            <i data-lucide="sparkles"></i>
+            <span>配對</span>
+          </button>
+          <button class="nav-item" data-view="explore">
+            <i data-lucide="sliders-horizontal"></i>
+            <span>探索</span>
+          </button>
+          <button class="nav-item" data-view="nearby">
+            <i data-lucide="map-pin"></i>
+            <span>附近</span>
+          </button>
+          <button class="nav-item" data-view="chat">
+            <i data-lucide="messages-square"></i>
+            <span>聊天</span>
+          </button>
+          <button class="nav-item" data-view="moments">
+            <i data-lucide="images"></i>
+            <span>動態</span>
+          </button>
+          <button class="nav-item" data-view="games">
+            <i data-lucide="gamepad-2"></i>
+            <span>遊戲</span>
+          </button>
+          <button class="nav-item" data-view="ai">
+            <i data-lucide="bot"></i>
+            <span>AI</span>
+          </button>
+          <button class="nav-item" data-view="safety">
+            <i data-lucide="shield-check"></i>
+            <span>安全</span>
+          </button>
+        </nav>
+
+        <div class="profile-mini">
+          <img
+            src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=220&q=80"
+            alt="你的個人照片"
+          />
+          <div>
+            <strong>Frank</strong>
+            <span>台北 · 線上</span>
+          </div>
+          <button class="icon-button" type="button" id="profileSettingsBtn" aria-label="設定">
+            <i data-lucide="settings"></i>
+          </button>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div class="topbar-title">
+            <span class="live-dot"></span>
+            <span id="statusText">今晚有 128 位新朋友在線</span>
+          </div>
+          <label class="search-box">
+            <i data-lucide="search"></i>
+            <input id="globalSearch" type="search" placeholder="搜尋房間、興趣或暱稱" />
+          </label>
+          <button class="primary-action" type="button" id="quickMatchBtn">
+            <i data-lucide="zap"></i>
+            <span>快速配對</span>
+          </button>
+        </header>
+
+        <section class="view is-active" id="rooms-view" aria-labelledby="roomsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Voice Rooms</p>
+              <h2 id="roomsTitle">語音房間</h2>
+            </div>
+            <div class="segmented-control" role="tablist" aria-label="房間分類">
+              <button class="is-active" type="button">推薦</button>
+              <button type="button">同城</button>
+              <button type="button">新手</button>
+            </div>
+          </div>
+
+          <div class="rooms-layout">
+            <div class="rooms-grid" id="roomsGrid"></div>
+            <aside class="room-stage" id="roomStage" aria-live="polite"></aside>
+          </div>
+        </section>
+
+        <section class="view" id="profile-view" aria-labelledby="profileTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">My Profile</p>
+              <h2 id="profileTitle">個人檔案</h2>
+            </div>
+            <button class="ghost-action" type="button" id="saveProfileBtn">
+              <i data-lucide="save"></i>
+              <span>儲存檔案</span>
+            </button>
+          </div>
+
+          <div class="profile-workspace">
+            <section class="profile-editor" id="profileEditor"></section>
+            <aside class="profile-preview-panel" id="profilePreview" aria-live="polite"></aside>
+          </div>
+        </section>
+
+        <section class="view" id="match-view" aria-labelledby="matchTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Smart Match</p>
+              <h2 id="matchTitle">配對卡片</h2>
+            </div>
+            <div class="match-meter">
+              <span>相似度</span>
+              <strong id="currentScore">92%</strong>
+            </div>
+          </div>
+
+          <div class="match-layout">
+            <div class="match-card" id="profileCard"></div>
+            <aside class="insight-panel">
+              <div class="panel-title">
+                <i data-lucide="radar"></i>
+                <h3>今日推薦</h3>
+              </div>
+              <div class="insight-list" id="insightList"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="explore-view" aria-labelledby="exploreTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Search & Filter</p>
+              <h2 id="exploreTitle">探索與篩選</h2>
+            </div>
+            <button class="ghost-action" type="button" id="resetFiltersBtn">
+              <i data-lucide="rotate-ccw"></i>
+              <span>重設條件</span>
+            </button>
+          </div>
+
+          <div class="discover-layout">
+            <aside class="filter-panel" id="discoverFilters"></aside>
+            <div class="discover-results" id="discoverResults" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section class="view" id="nearby-view" aria-labelledby="nearbyTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Nearby</p>
+              <h2 id="nearbyTitle">附近的人</h2>
+            </div>
+            <div class="segmented-control" role="tablist" aria-label="附近排序">
+              <button class="is-active" type="button" data-nearby-mode="distance">距離</button>
+              <button type="button" data-nearby-mode="online">在線</button>
+              <button type="button" data-nearby-mode="activity">動態</button>
+            </div>
+          </div>
+
+          <div class="nearby-layout">
+            <section class="nearby-map" id="nearbyMap"></section>
+            <aside class="nearby-list" id="nearbyList" aria-live="polite"></aside>
+          </div>
+        </section>
+
+        <section class="view" id="chat-view" aria-labelledby="chatTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Messages</p>
+              <h2 id="chatTitle">聊天中心</h2>
+            </div>
+            <button class="ghost-action" type="button" id="newChatBtn">
+              <i data-lucide="message-circle-plus"></i>
+              <span>新增話題</span>
+            </button>
+          </div>
+
+          <div class="chat-shell">
+            <aside class="conversation-list" id="conversationList"></aside>
+            <div class="chat-panel">
+              <div class="chat-header" id="chatHeader"></div>
+              <div class="message-list" id="messageList"></div>
+              <form class="composer" id="chatForm">
+                <button class="icon-button" type="button" aria-label="新增語音訊息">
+                  <i data-lucide="mic-2"></i>
+                </button>
+                <input id="chatInput" type="text" placeholder="輸入訊息" autocomplete="off" />
+                <button class="primary-action" type="submit">
+                  <i data-lucide="send"></i>
+                  <span>送出</span>
+                </button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="moments-view" aria-labelledby="momentsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Moments</p>
+              <h2 id="momentsTitle">動態廣場</h2>
+            </div>
+            <div class="segmented-control" role="tablist" aria-label="動態分類">
+              <button class="is-active" type="button" data-moment-filter="全部">全部</button>
+              <button type="button" data-moment-filter="生活">生活</button>
+              <button type="button" data-moment-filter="約會提案">約會</button>
+            </div>
+          </div>
+
+          <div class="moments-layout">
+            <section class="moment-composer">
+              <form id="momentForm">
+                <textarea id="momentText" rows="4" placeholder="分享一段今天的小事，讓合適的人有話題可以靠近"></textarea>
+                <div class="composer-tools">
+                  <label>
+                    <span>分類</span>
+                    <select id="momentTag">
+                      <option>生活</option>
+                      <option>約會提案</option>
+                      <option>興趣</option>
+                      <option>語音房</option>
+                    </select>
+                  </label>
+                  <input id="momentImageUrl" type="url" placeholder="照片網址（選填）" />
+                  <button class="primary-action" type="submit">
+                    <i data-lucide="send"></i>
+                    <span>發布</span>
+                  </button>
+                </div>
+              </form>
+            </section>
+            <div class="moments-feed" id="momentsFeed" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section class="view" id="games-view" aria-labelledby="gamesTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Ice Breakers</p>
+              <h2 id="gamesTitle">破冰遊戲</h2>
+            </div>
+            <button class="ghost-action" type="button" id="resetGamesBtn">
+              <i data-lucide="rotate-ccw"></i>
+              <span>重開遊戲</span>
+            </button>
+          </div>
+
+          <div class="games-grid">
+            <section class="game-panel">
+              <div class="panel-title">
+                <i data-lucide="badge-question-mark"></i>
+                <h3>真心話轉盤</h3>
+              </div>
+              <div class="prompt-card" id="promptCard"></div>
+              <button class="primary-action stretch" type="button" id="spinPromptBtn">
+                <i data-lucide="shuffle"></i>
+                <span>抽下一題</span>
+              </button>
+            </section>
+
+            <section class="game-panel">
+              <div class="panel-title">
+                <i data-lucide="heart-handshake"></i>
+                <h3>默契快問</h3>
+              </div>
+              <div class="quiz-box" id="quizBox"></div>
+            </section>
+
+            <section class="game-panel wide">
+              <div class="panel-title">
+                <i data-lucide="copy-check"></i>
+                <h3>興趣翻牌</h3>
+              </div>
+              <div class="memory-status" id="memoryStatus"></div>
+              <div class="memory-board" id="memoryBoard"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="ai-view" aria-labelledby="aiTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">AI & Premium</p>
+              <h2 id="aiTitle">AI 約會助理</h2>
+            </div>
+            <button class="primary-action" type="button" id="boostNowBtn">
+              <i data-lucide="rocket"></i>
+              <span>啟動 Boost</span>
+            </button>
+          </div>
+
+          <div class="ai-layout">
+            <section class="ai-coach-panel" id="aiCoachPanel"></section>
+            <aside class="boost-panel" id="boostPanel" aria-live="polite"></aside>
+          </div>
+        </section>
+
+        <section class="view" id="safety-view" aria-labelledby="safetyTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Trust</p>
+              <h2 id="safetyTitle">安全中心</h2>
+            </div>
+          </div>
+
+          <div class="safety-grid" id="safetyGrid" aria-live="polite"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
