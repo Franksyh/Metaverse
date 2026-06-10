@@ -264,9 +264,9 @@ const launchChecklist = [
     done: true,
   },
   {
-    title: "真正多人資料同步",
-    detail: "需要後端登入、資料庫與即時通訊才能讓不同使用者共享配對和聊天。",
-    done: false,
+    title: "多人雲端連線",
+    detail: "使用 Netlify Functions + Blobs 同步線上名單與共享房間訊息。",
+    done: true,
   },
 ];
 
@@ -287,6 +287,12 @@ const state = {
   lastSyncAt: null,
   dynamicMetrics: null,
   dynamicRecommendations: [],
+  sessionId: "",
+  liveStatus: "connecting",
+  liveParticipants: [],
+  liveMessages: [],
+  liveOnlineCount: 0,
+  liveLastSyncAt: null,
   installPrompt: null,
   superLikes: 3,
   sensitiveFilter: true,
@@ -395,6 +401,7 @@ function saveAppState() {
       boostEndsAt: state.boostEndsAt,
       boostViews: state.boostViews,
       waitlistCount: state.waitlistCount,
+      sessionId: state.sessionId,
       superLikes: state.superLikes,
       sensitiveFilter: state.sensitiveFilter,
       slowMode: state.slowMode,
@@ -411,6 +418,44 @@ function saveAppState() {
 function scheduleSave() {
   window.clearTimeout(scheduleSave.timer);
   scheduleSave.timer = window.setTimeout(saveAppState, 180);
+}
+
+function ensureSessionId() {
+  if (state.sessionId) return state.sessionId;
+  let saved = "";
+  try {
+    saved = localStorage.getItem("pair-room-session-id");
+  } catch {
+    saved = "";
+  }
+  if (saved) {
+    state.sessionId = saved;
+    return saved;
+  }
+  const generated =
+    window.crypto?.randomUUID?.() || `session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  state.sessionId = generated;
+  try {
+    localStorage.setItem("pair-room-session-id", generated);
+  } catch {
+    // The in-memory session still supports the current visit.
+  }
+  return generated;
+}
+
+function currentDeviceType() {
+  if (window.matchMedia("(max-width: 720px)").matches) return "mobile";
+  if (window.matchMedia("(pointer: coarse)").matches) return "tablet";
+  return "desktop";
+}
+
+function deviceLabel(device) {
+  return {
+    mobile: "手機",
+    tablet: "平板",
+    desktop: "電腦",
+    web: "網頁",
+  }[device] || "網頁";
 }
 
 function loadSavedState() {
@@ -433,6 +478,7 @@ function loadSavedState() {
       Object.assign(state, saved.state);
       state.discoverFilters = { ...defaultDiscoverFilters, ...(saved.state.discoverFilters || {}) };
     }
+    ensureSessionId();
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
@@ -446,6 +492,10 @@ function setView(view) {
   $$(".view").forEach((section) => {
     section.classList.toggle("is-active", section.id === `${view}-view`);
   });
+  if (view === "rooms") {
+    renderMultiplayerPanel();
+    syncRealtime("heartbeat");
+  }
   if (view === "profile") {
     renderProfileEditor();
   }
@@ -517,6 +567,175 @@ async function syncDynamicData() {
     state.dynamicMode = "local";
     if (state.activeView === "growth") renderGrowth();
   }
+}
+
+function multiplayerPayload(action = "heartbeat", extra = {}) {
+  return {
+    action,
+    sessionId: ensureSessionId(),
+    name: userProfile.name || "訪客",
+    photo: userProfile.photo || "",
+    roomId: state.currentRoomId,
+    device: currentDeviceType(),
+    ...extra,
+  };
+}
+
+function applyRealtimeData(data) {
+  if (!data?.ok) return;
+  state.liveStatus = "connected";
+  state.liveParticipants = Array.isArray(data.participants) ? data.participants : [];
+  state.liveMessages = Array.isArray(data.messages) ? data.messages : [];
+  state.liveOnlineCount = Number(data.allOnline || state.liveParticipants.length);
+  state.liveLastSyncAt = data.generatedAt || new Date().toISOString();
+  renderMultiplayerPanel();
+  if (state.activeView === "growth") renderGrowth();
+}
+
+async function syncRealtime(action = "heartbeat", extra = {}) {
+  try {
+    const response = await fetch("/api/realtime", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(multiplayerPayload(action, extra)),
+    });
+    if (!response.ok) throw new Error("Realtime API unavailable");
+    applyRealtimeData(await response.json());
+  } catch {
+    state.liveStatus = "offline";
+    renderMultiplayerPanel();
+  }
+}
+
+async function fetchRealtimeSnapshot() {
+  try {
+    const response = await fetch(`/api/realtime?roomId=${encodeURIComponent(state.currentRoomId)}`, {
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) throw new Error("Realtime API unavailable");
+    applyRealtimeData(await response.json());
+  } catch {
+    state.liveStatus = "offline";
+    renderMultiplayerPanel();
+  }
+}
+
+async function sendLiveMessage(text) {
+  const message = text.trim();
+  if (!message) return;
+  await syncRealtime("message", { text: message });
+}
+
+function leaveRealtimeRoom() {
+  const payload = JSON.stringify(multiplayerPayload("leave"));
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon("/api/realtime", new Blob([payload], { type: "application/json" }));
+    return;
+  }
+  fetch("/api/realtime", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+function renderMultiplayerPanel() {
+  const panel = $("#multiplayerPanel");
+  if (!panel) return;
+  const room = roomById(state.currentRoomId);
+  const isConnected = state.liveStatus === "connected";
+  const participants = state.liveParticipants;
+  const messages = state.liveMessages;
+  const lastSync = state.liveLastSyncAt
+    ? new Date(state.liveLastSyncAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })
+    : "尚未同步";
+
+  panel.innerHTML = `
+    <div class="panel-title">
+      <i data-lucide="${isConnected ? "users-round" : "cloud-off"}"></i>
+      <h3>多人連線房間</h3>
+    </div>
+    <div class="multiplayer-status ${isConnected ? "is-connected" : ""}">
+      <div>
+        <span>${isConnected ? "雲端連線中" : "等待連線"}</span>
+        <strong>${room.title}</strong>
+      </div>
+      <div>
+        <span>全站在線</span>
+        <strong>${state.liveOnlineCount || participants.length}</strong>
+      </div>
+      <div>
+        <span>最後同步</span>
+        <strong>${lastSync}</strong>
+      </div>
+      <button class="ghost-action" type="button" id="refreshLiveBtn">
+        <i data-lucide="refresh-cw"></i>
+        <span>同步</span>
+      </button>
+    </div>
+    <div class="multiplayer-grid">
+      <section class="live-participants">
+        <h4>此房在線</h4>
+        <div>
+          ${
+            participants.length
+              ? participants
+                  .map(
+                    (participant) => `
+                      <article class="${participant.sessionId === state.sessionId ? "is-me" : ""}">
+                        <img src="${escapeHtml(participant.photo || userProfile.photo)}" alt="${escapeHtml(participant.name)}" />
+                        <span>
+                          <strong>${escapeHtml(participant.name)}${participant.sessionId === state.sessionId ? "（你）" : ""}</strong>
+                          <small>${deviceLabel(participant.device)} · 線上</small>
+                        </span>
+                      </article>
+                    `,
+                  )
+                  .join("")
+              : `<p>目前沒有其他使用者在線。用手機或另一台電腦開啟同一網址即可測試多人連線。</p>`
+          }
+        </div>
+      </section>
+      <section class="live-messages">
+        <h4>共享訊息</h4>
+        <div class="live-message-list" id="liveMessageList">
+          ${
+            messages.length
+              ? messages
+                  .map(
+                    (message) => `
+                      <article class="${message.sessionId === state.sessionId ? "mine" : ""}">
+                        <span>${escapeHtml(message.name)} · ${deviceLabel(message.device)}</span>
+                        <p>${escapeHtml(message.text)}</p>
+                      </article>
+                    `,
+                  )
+                  .join("")
+              : `<article><span>系統</span><p>送出第一則共享訊息，其他裝置會在同步後看到。</p></article>`
+          }
+        </div>
+        <form class="live-composer" id="liveMessageForm">
+          <input id="liveMessageInput" type="text" maxlength="240" placeholder="輸入多人共享訊息" autocomplete="off" />
+          <button class="primary-action" type="submit">
+            <i data-lucide="send"></i>
+            <span>送出</span>
+          </button>
+        </form>
+      </section>
+    </div>
+  `;
+
+  $("#refreshLiveBtn")?.addEventListener("click", () => syncRealtime("heartbeat"));
+  $("#liveMessageForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#liveMessageInput");
+    sendLiveMessage(input.value);
+    input.value = "";
+  });
+  const list = $("#liveMessageList");
+  if (list) list.scrollTop = list.scrollHeight;
+  syncIcons();
 }
 
 function renderRooms(filter = "") {
@@ -620,6 +839,8 @@ function joinRoom(roomId) {
   state.currentRoomId = roomId;
   renderRooms($("#globalSearch").value);
   renderRoomStage();
+  renderMultiplayerPanel();
+  syncRealtime("heartbeat");
   const room = roomById(roomId);
   $("#statusText").textContent = `你正在 ${room.title}`;
   showToast(`已切換到「${room.title}」`);
@@ -1828,15 +2049,15 @@ function renderGrowth() {
     <div class="launch-grid">
       <article>
         <h3>目前可多人使用的部分</h3>
-        <p>任何人都可以透過公開網址同時瀏覽網站、查看功能、填寫候補表單。這適合產品展示、找測試者與收集需求。</p>
+        <p>任何人都可以透過公開網址同時瀏覽網站、進入同一個房間、看到線上名單，並使用共享房間訊息。</p>
       </article>
       <article>
-        <h3>真正多人互動還需要</h3>
-        <p>登入系統、資料庫、即時聊天室、配對紀錄、照片儲存、審核後台與隱私權設定。這些需要後端服務接入。</p>
+        <h3>目前多人連線方式</h3>
+        <p>使用 Netlify Functions 與 Blobs 做雲端同步，前端定時輪詢，不需安裝 App 即可跨手機、電腦、網頁使用。</p>
       </article>
       <article>
         <h3>建議下一步</h3>
-        <p>先用候補表單驗證需求，再加入 Supabase/Firebase 或 Netlify Blobs + Functions，讓配對、聊天和動態跨使用者同步。</p>
+        <p>若要正式商用，可再加入帳號登入、權限控管、照片儲存、封鎖名單與管理後台。</p>
       </article>
     </div>
     <div class="launch-checklist">
@@ -2252,6 +2473,7 @@ function init() {
   syncProfileMini();
   renderRooms();
   renderRoomStage();
+  renderMultiplayerPanel();
   renderProfileEditor();
   renderProfileCard();
   renderExplore();
@@ -2267,7 +2489,10 @@ function init() {
   wireEvents();
   registerPwa();
   syncDynamicData();
+  syncRealtime("heartbeat");
   window.setInterval(syncDynamicData, 90000);
+  window.setInterval(syncRealtime, 15000);
+  window.addEventListener("pagehide", leaveRealtimeRoom);
   syncIcons();
 }
 

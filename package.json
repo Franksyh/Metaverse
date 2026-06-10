@@ -1,0 +1,12 @@
+{
+  "name": "pair-room-dating-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check netlify/functions/app-data.mts && node --check netlify/functions/realtime.mts"
+  },
+  "dependencies": {
+    "@netlify/blobs": "latest"
+  }
+}
