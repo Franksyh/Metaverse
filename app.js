@@ -345,8 +345,13 @@ const state = {
   liveStatus: "connecting",
   liveParticipants: [],
   liveMessages: [],
+  liveMatches: [],
+  liveGame: null,
+  liveCapabilities: null,
   liveOnlineCount: 0,
   liveLastSyncAt: null,
+  voiceLevel: 0,
+  voiceSyncTimer: null,
   installPrompt: null,
   superLikes: 3,
   sensitiveFilter: true,
@@ -690,7 +695,7 @@ function applyDynamicData(data) {
   }
 
   const onlineNow = state.dynamicMetrics?.onlineNow || 128;
-  $("#statusText").textContent = `Netlify 動態同步中：${onlineNow} 位新朋友在線`;
+  $("#statusText").textContent = `${dynamicPlatformLabel()} 同步中：${onlineNow} 位新朋友在線`;
 
   renderRooms(state.globalSearch);
   renderRoomStage();
@@ -724,11 +729,43 @@ function multiplayerPayload(action = "heartbeat", extra = {}) {
   };
 }
 
+function voicePayload() {
+  return {
+    voice: {
+      joined: state.micOn,
+      muted: state.muted,
+      speaking: state.micOn && !state.muted && state.voiceLevel > 18,
+      level: state.voiceLevel,
+    },
+  };
+}
+
+function publishVoiceState(action = "voice-update") {
+  return syncRealtime(action, voicePayload());
+}
+
+function startVoicePresenceLoop() {
+  window.clearInterval(state.voiceSyncTimer);
+  publishVoiceState("voice-join");
+  state.voiceSyncTimer = window.setInterval(() => {
+    if (!state.micOn) return;
+    publishVoiceState("voice-update");
+  }, 3000);
+}
+
+function stopVoicePresenceLoop() {
+  window.clearInterval(state.voiceSyncTimer);
+  state.voiceSyncTimer = null;
+}
+
 function applyRealtimeData(data) {
   if (!data?.ok) return;
   state.liveStatus = "connected";
   state.liveParticipants = Array.isArray(data.participants) ? data.participants : [];
   state.liveMessages = Array.isArray(data.messages) ? data.messages : [];
+  state.liveMatches = Array.isArray(data.matches) ? data.matches : [];
+  state.liveGame = data.game && typeof data.game === "object" ? data.game : null;
+  state.liveCapabilities = data.capabilities || null;
   state.liveOnlineCount = Number(data.allOnline || state.liveParticipants.length);
   state.liveLastSyncAt = data.generatedAt || new Date().toISOString();
   renderMultiplayerPanel();
@@ -769,6 +806,26 @@ async function sendLiveMessage(text) {
   await syncRealtime("message", { text: message });
 }
 
+async function inviteLiveMatch(toSessionId = "") {
+  await syncRealtime("match-invite", { toSessionId });
+  showToast(toSessionId ? "已送出配對邀請" : "已發出隨機配對邀請");
+}
+
+async function acceptLiveMatch(matchId) {
+  await syncRealtime("match-accept", { matchId });
+  showToast("已接受配對邀請，可以開始一對一聊天");
+}
+
+async function sendGameAnswer(answer) {
+  const value = answer.trim();
+  if (!value) return;
+  await syncRealtime("game-answer", { answer: value });
+}
+
+async function nextLiveGameRound() {
+  await syncRealtime("game-next");
+}
+
 function leaveRealtimeRoom() {
   const payload = JSON.stringify(multiplayerPayload("leave"));
   if (navigator.sendBeacon) {
@@ -790,6 +847,9 @@ function renderMultiplayerPanel() {
   const isConnected = state.liveStatus === "connected";
   const participants = state.liveParticipants;
   const messages = state.liveMessages;
+  const voiceParticipants = participants.filter((participant) => participant.voice?.joined);
+  const matches = state.liveMatches;
+  const game = state.liveGame || { round: 1, prompt: "用一句話形容你今天的心情。", answers: [] };
   const lastSync = state.liveLastSyncAt
     ? new Date(state.liveLastSyncAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })
     : "尚未同步";
@@ -797,7 +857,7 @@ function renderMultiplayerPanel() {
   panel.innerHTML = `
     <div class="panel-title">
       <i data-lucide="${isConnected ? "users-round" : "cloud-off"}"></i>
-      <h3>多人連線房間</h3>
+      <h3>真人多人互動房</h3>
     </div>
     <div class="multiplayer-status ${isConnected ? "is-connected" : ""}">
       <div>
@@ -817,6 +877,24 @@ function renderMultiplayerPanel() {
         <span>同步</span>
       </button>
     </div>
+    <div class="live-room-tools">
+      <button class="primary-action" type="button" id="voiceToggleBtn">
+        <i data-lucide="${state.micOn ? "mic-off" : "mic"}"></i>
+        <span>${state.micOn ? "離開語音" : "真人上麥"}</span>
+      </button>
+      <button class="ghost-action" type="button" id="voiceMuteLiveBtn" ${state.micOn ? "" : "disabled"}>
+        <i data-lucide="${state.muted ? "volume-2" : "mic-2"}"></i>
+        <span>${state.muted ? "取消靜音" : "靜音"}</span>
+      </button>
+      <button class="ghost-action" type="button" id="randomMatchBtn">
+        <i data-lucide="heart-handshake"></i>
+        <span>隨機配對真人</span>
+      </button>
+      <button class="ghost-action" type="button" id="nextGameBtn">
+        <i data-lucide="shuffle"></i>
+        <span>下一題</span>
+      </button>
+    </div>
     <div class="multiplayer-grid">
       <section class="live-participants">
         <h4>此房在線</h4>
@@ -830,8 +908,13 @@ function renderMultiplayerPanel() {
                         <img src="${escapeHtml(participant.photo || userProfile.photo)}" alt="${escapeHtml(participant.name)}" />
                         <span>
                           <strong>${escapeHtml(participant.name)}${participant.sessionId === state.sessionId ? "（你）" : ""}</strong>
-                          <small>${deviceLabel(participant.device)} · 線上</small>
+                          <small>${deviceLabel(participant.device)} · ${participant.voice?.joined ? (participant.voice.muted ? "語音靜音" : "語音上麥") : "線上"}</small>
                         </span>
+                        ${
+                          participant.sessionId === state.sessionId
+                            ? ""
+                            : `<button class="mini-action" type="button" data-invite-session="${escapeHtml(participant.sessionId)}">配對</button>`
+                        }
                       </article>
                     `,
                   )
@@ -867,13 +950,122 @@ function renderMultiplayerPanel() {
         </form>
       </section>
     </div>
+    <div class="live-experience-grid">
+      <section class="voice-channel-card">
+        <div class="sub-panel-title">
+          <i data-lucide="audio-lines"></i>
+          <h4>語音房</h4>
+        </div>
+        <p>使用瀏覽器麥克風上麥，房內會同步上麥、靜音與說話狀態。</p>
+        <div class="voice-speaker-list">
+          ${
+            voiceParticipants.length
+              ? voiceParticipants
+                  .map((participant) => {
+                    const level = Math.max(6, Number(participant.voice?.level || 0));
+                    return `
+                      <article class="${participant.sessionId === state.sessionId ? "is-me" : ""}">
+                        <span>
+                          <strong>${escapeHtml(participant.name)}${participant.sessionId === state.sessionId ? "（你）" : ""}</strong>
+                          <small>${participant.voice?.muted ? "靜音中" : participant.voice?.speaking ? "正在說話" : "上麥中"}</small>
+                        </span>
+                        <b style="--level:${level}%"></b>
+                      </article>
+                    `;
+                  })
+                  .join("")
+              : `<span class="empty-live-note">還沒有人上麥，點「真人上麥」開始語音房。</span>`
+          }
+        </div>
+      </section>
+      <section class="live-match-card">
+        <div class="sub-panel-title">
+          <i data-lucide="heart-handshake"></i>
+          <h4>真人配對邀請</h4>
+        </div>
+        <div class="live-match-list">
+          ${
+            matches.length
+              ? matches
+                  .map((match) => {
+                    const canAccept =
+                      match.status !== "accepted" &&
+                      match.fromSessionId !== state.sessionId &&
+                      (!match.toSessionId || match.toSessionId === state.sessionId);
+                    return `
+                      <article>
+                        <span>
+                          <strong>${escapeHtml(match.fromName)} → ${escapeHtml(match.toName)}</strong>
+                          <small>${match.status === "accepted" ? "已配對成功" : match.status === "open" ? "等待房內真人接受" : "等待接受"}</small>
+                        </span>
+                        ${
+                          canAccept
+                            ? `<button class="mini-action" type="button" data-accept-match="${escapeHtml(match.id)}">接受</button>`
+                            : ""
+                        }
+                      </article>
+                    `;
+                  })
+                  .join("")
+              : `<span class="empty-live-note">目前沒有配對邀請。可以對在線真人按「配對」。</span>`
+          }
+        </div>
+      </section>
+      <section class="live-game-card">
+        <div class="sub-panel-title">
+          <i data-lucide="gamepad-2"></i>
+          <h4>多人破冰遊戲 · 第 ${Number(game.round || 1)} 題</h4>
+        </div>
+        <p class="live-game-prompt">${escapeHtml(game.prompt)}</p>
+        <form class="live-game-form" id="liveGameForm">
+          <input id="liveGameInput" type="text" maxlength="180" placeholder="輸入你的答案，所有人都看得到" autocomplete="off" />
+          <button class="primary-action" type="submit">
+            <i data-lucide="send"></i>
+            <span>回答</span>
+          </button>
+        </form>
+        <div class="live-game-answers">
+          ${
+            Array.isArray(game.answers) && game.answers.length
+              ? game.answers
+                  .slice(-6)
+                  .map(
+                    (answer) => `
+                      <article class="${answer.sessionId === state.sessionId ? "mine" : ""}">
+                        <strong>${escapeHtml(answer.name)}</strong>
+                        <span>${escapeHtml(answer.answer)}</span>
+                      </article>
+                    `,
+                  )
+                  .join("")
+              : `<span class="empty-live-note">還沒有人回答，成為第一個破冰的人。</span>`
+          }
+        </div>
+      </section>
+    </div>
   `;
 
   $("#refreshLiveBtn")?.addEventListener("click", () => syncRealtime("heartbeat"));
+  $("#voiceToggleBtn")?.addEventListener("click", toggleMic);
+  $("#voiceMuteLiveBtn")?.addEventListener("click", toggleMute);
+  $("#randomMatchBtn")?.addEventListener("click", () => inviteLiveMatch());
+  $("#nextGameBtn")?.addEventListener("click", nextLiveGameRound);
+  $$("[data-invite-session]").forEach((button) => {
+    button.addEventListener("click", () => inviteLiveMatch(button.dataset.inviteSession));
+  });
+  $$("[data-accept-match]").forEach((button) => {
+    button.addEventListener("click", () => acceptLiveMatch(button.dataset.acceptMatch));
+  });
   $("#liveMessageForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const input = $("#liveMessageInput");
     sendLiveMessage(input.value);
+    input.value = "";
+  });
+  $("#liveGameForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#liveGameInput");
+    sendGameAnswer(input.value);
     input.value = "";
   });
   const list = $("#liveMessageList");
@@ -1248,8 +1440,10 @@ function renderProfilePreview() {
 async function toggleMic() {
   if (state.micOn) {
     stopMic();
+    syncRealtime("voice-leave", voicePayload());
     showToast("已離開語音");
     renderRoomStage();
+    renderMultiplayerPanel();
     return;
   }
 
@@ -1265,6 +1459,7 @@ async function toggleMic() {
     state.muted = false;
     renderRoomStage();
     startWave();
+    startVoicePresenceLoop();
     showToast("已加入語音房");
   } catch (error) {
     showToast("麥克風未開啟，請確認瀏覽器權限");
@@ -1279,8 +1474,10 @@ function stopMic() {
     state.audioContext.close();
   }
   window.clearInterval(state.waveTimer);
+  stopVoicePresenceLoop();
   state.micOn = false;
   state.muted = false;
+  state.voiceLevel = 0;
   state.micStream = null;
   state.audioContext = null;
   state.analyser = null;
@@ -1293,6 +1490,8 @@ function toggleMute() {
     track.enabled = !state.muted;
   });
   renderRoomStage();
+  renderMultiplayerPanel();
+  publishVoiceState("voice-update");
   if (state.micOn) startWave();
   showToast(state.muted ? "已靜音" : "已恢復收音");
 }
@@ -1311,11 +1510,14 @@ function startWave() {
   state.waveTimer = window.setInterval(() => {
     const bars = $$("#waveform span");
     if (!state.analyser || state.muted) {
+      state.voiceLevel = 0;
       drawIdleWave();
       return;
     }
     const data = new Uint8Array(state.analyser.frequencyBinCount);
     state.analyser.getByteFrequencyData(data);
+    const average = data.reduce((sum, value) => sum + value, 0) / Math.max(1, data.length);
+    state.voiceLevel = Math.round(Math.max(0, Math.min(100, average / 2.55)));
     bars.forEach((bar, index) => {
       const value = data[index % data.length] || 8;
       bar.style.height = `${Math.max(8, Math.min(48, value / 3))}px`;

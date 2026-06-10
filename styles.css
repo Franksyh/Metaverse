@@ -415,6 +415,13 @@ textarea {
   color: var(--ink);
 }
 
+.live-room-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .multiplayer-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.36fr) minmax(0, 0.64fr);
@@ -451,6 +458,18 @@ textarea {
 .live-participants article.is-me {
   outline: 2px solid rgba(8, 127, 123, 0.22);
   background: #e4f3ef;
+}
+
+.mini-action {
+  min-height: 30px;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 1px solid rgba(8, 127, 123, 0.28);
+  border-radius: var(--radius);
+  color: var(--teal);
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .live-participants img {
@@ -514,6 +533,129 @@ textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   outline: 0;
+}
+
+.live-experience-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.voice-channel-card,
+.live-match-card,
+.live-game-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: #f8faf9;
+}
+
+.sub-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sub-panel-title h4,
+.voice-channel-card p,
+.live-game-prompt {
+  margin: 0;
+}
+
+.sub-panel-title svg {
+  width: 18px;
+  height: 18px;
+  color: var(--teal);
+}
+
+.voice-channel-card p,
+.live-game-prompt,
+.empty-live-note {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.voice-speaker-list,
+.live-match-list,
+.live-game-answers {
+  display: grid;
+  gap: 8px;
+}
+
+.voice-speaker-list article,
+.live-match-list article,
+.live-game-answers article {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.voice-speaker-list article {
+  grid-template-columns: minmax(0, 1fr) 72px;
+  align-items: center;
+}
+
+.voice-speaker-list article.is-me,
+.live-game-answers article.mine {
+  outline: 2px solid rgba(8, 127, 123, 0.2);
+}
+
+.voice-speaker-list strong,
+.voice-speaker-list small,
+.live-match-list strong,
+.live-match-list small,
+.live-game-answers strong,
+.live-game-answers span {
+  display: block;
+}
+
+.voice-speaker-list small,
+.live-match-list small,
+.live-game-answers span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.voice-speaker-list b {
+  position: relative;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dce8e3;
+}
+
+.voice-speaker-list b::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--level);
+  content: "";
+  border-radius: inherit;
+  background: var(--teal);
+}
+
+.live-match-list article {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.live-game-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.live-game-form input {
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .rooms-grid {
@@ -2442,6 +2584,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .live-experience-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .moment-composer {
     position: static;
   }
@@ -2549,6 +2695,8 @@ textarea {
   .remote-url-box,
   .device-support-grid,
   .guide-current,
+  .live-room-tools,
+  .live-experience-grid,
   .multiplayer-status {
     grid-template-columns: 1fr 1fr;
   }
@@ -2581,6 +2729,9 @@ textarea {
   .guide-hero,
   .guide-current,
   .date-plan-grid,
+  .live-room-tools,
+  .live-experience-grid,
+  .live-game-form,
   .verification-strip {
     grid-template-columns: 1fr;
   }
