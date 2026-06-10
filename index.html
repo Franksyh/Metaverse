@@ -28,6 +28,10 @@
             <i data-lucide="radio"></i>
             <span>房間</span>
           </button>
+          <button class="nav-item" data-view="guide">
+            <i data-lucide="compass"></i>
+            <span>使用</span>
+          </button>
           <button class="nav-item" data-view="profile">
             <i data-lucide="user-round"></i>
             <span>檔案</span>
@@ -121,6 +125,24 @@
           <section class="multiplayer-panel" id="multiplayerPanel" aria-live="polite"></section>
         </section>
 
+        <section class="view" id="guide-view" aria-labelledby="guideTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">How To Use</p>
+              <h2 id="guideTitle">如何使用緣房間</h2>
+            </div>
+            <button class="primary-action" type="button" id="startGuideBtn">
+              <i data-lucide="play"></i>
+              <span>開始體驗</span>
+            </button>
+          </div>
+
+          <div class="guide-layout">
+            <section class="guide-panel" id="guidePanel" aria-live="polite"></section>
+            <aside class="advantage-panel" id="advantagePanel"></aside>
+          </div>
+        </section>
+
         <section class="view" id="profile-view" aria-labelledby="profileTitle">
           <div class="section-heading">
             <div>
@@ -159,6 +181,7 @@
                 <h3>今日推薦</h3>
               </div>
               <div class="insight-list" id="insightList"></div>
+              <div class="market-breaker-panel" id="marketBreakerPanel"></div>
             </aside>
           </div>
         </section>

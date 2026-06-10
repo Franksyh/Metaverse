@@ -250,7 +250,7 @@ const moments = [
 const launchChecklist = [
   {
     title: "公開網站",
-    detail: "Netlify 可讓多人同時瀏覽同一個前端網站。",
+    detail: "Netlify 與 Vercel 都可讓多人同時瀏覽同一個前端網站。",
     done: true,
   },
   {
@@ -265,8 +265,62 @@ const launchChecklist = [
   },
   {
     title: "多人雲端連線",
-    detail: "使用 Netlify Functions + Blobs 同步線上名單與共享房間訊息。",
+    detail: "使用雲端 Functions 同步線上名單與共享房間訊息。",
     done: true,
+  },
+];
+
+const usageSteps = [
+  {
+    icon: "id-card",
+    title: "完成個人檔案",
+    detail: "上傳照片、填寫興趣與交友目標，讓 AI 能判斷更適合的對象。",
+    view: "profile",
+    action: "編輯檔案",
+  },
+  {
+    icon: "badge-check",
+    title: "提高信任分數",
+    detail: "手機、Email、自拍與身分驗證越完整，越容易進入高品質推薦池。",
+    view: "safety",
+    action: "前往驗證",
+  },
+  {
+    icon: "sparkles",
+    title: "看懂推薦原因",
+    detail: "配對頁會說明共同興趣、互動節奏、信任狀態與適合的約會提案。",
+    view: "match",
+    action: "開始配對",
+  },
+  {
+    icon: "radio",
+    title: "加入多人房間",
+    detail: "先用低壓語音房或多人文字同步互動，再決定是否一對一聊天。",
+    view: "rooms",
+    action: "進入房間",
+  },
+];
+
+const marketAdvantages = [
+  {
+    title: "反無限滑卡",
+    detail: "把推薦原因、約會路線與安全提示一起呈現，讓使用者知道為什麼值得聊。",
+    score: 94,
+  },
+  {
+    title: "信任優先排序",
+    detail: "未來可把真人驗證、訊息禮貌度與檢舉紀錄納入推薦權重。",
+    score: 88,
+  },
+  {
+    title: "AI 約會副駕",
+    detail: "每次配對都產生開場白、聊天節奏、公共地點提案與安全 check-in。",
+    score: 91,
+  },
+  {
+    title: "多人低壓互動",
+    detail: "用房間、遊戲與動態廣場降低一對一破冰壓力，提高留存。",
+    score: 86,
   },
 ];
 
@@ -496,6 +550,9 @@ function setView(view) {
     renderMultiplayerPanel();
     syncRealtime("heartbeat");
   }
+  if (view === "guide") {
+    renderGuide();
+  }
   if (view === "profile") {
     renderProfileEditor();
   }
@@ -523,6 +580,92 @@ function setView(view) {
   if (view === "safety") {
     renderSafetyCenter();
   }
+  syncIcons();
+}
+
+function dynamicModeIsLive() {
+  return ["netlify-functions", "vercel-functions"].includes(state.dynamicMode);
+}
+
+function dynamicPlatformLabel() {
+  if (state.dynamicMode === "vercel-functions") return "Vercel Functions";
+  if (state.dynamicMode === "netlify-functions") return "Netlify Functions";
+  return "本機示範資料";
+}
+
+function renderGuide() {
+  const completion = profileCompletion();
+  const trust = verificationTrustScore();
+  const activeRoom = roomById(state.currentRoomId);
+  $("#guidePanel").innerHTML = `
+    <div class="panel-title">
+      <i data-lucide="compass"></i>
+      <h3>3 分鐘上手流程</h3>
+    </div>
+    <div class="guide-hero">
+      <div>
+        <span class="eyebrow">Dating OS</span>
+        <h3>先建立信任，再創造高品質互動</h3>
+        <p>緣房間不是只讓你一直滑卡，而是把檔案完整度、驗證、安全、多人房間與 AI 約會建議放在同一條路徑中。</p>
+      </div>
+      <div class="guide-score">
+        <span>目前準備度</span>
+        <strong>${Math.round((completion + trust) / 2)}%</strong>
+      </div>
+    </div>
+    <div class="use-step-grid">
+      ${usageSteps
+        .map(
+          (step, index) => `
+            <article class="use-step-card">
+              <i data-lucide="${step.icon}"></i>
+              <small>Step ${index + 1}</small>
+              <h4>${step.title}</h4>
+              <p>${step.detail}</p>
+              <button class="ghost-action" type="button" data-guide-view="${step.view}">
+                <span>${step.action}</span>
+              </button>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+    <div class="guide-current">
+      <span><i data-lucide="radio"></i> 目前房間：${escapeHtml(activeRoom.title)}</span>
+      <span><i data-lucide="shield-check"></i> 信任分數：${trust}%</span>
+      <span><i data-lucide="cloud"></i> 雲端狀態：${dynamicPlatformLabel()}</span>
+    </div>
+  `;
+
+  $("#advantagePanel").innerHTML = `
+    <div class="panel-title">
+      <i data-lucide="trophy"></i>
+      <h3>超越市面交友軟體的方向</h3>
+    </div>
+    <div class="advantage-stack">
+      ${marketAdvantages
+        .map(
+          (item) => `
+            <article class="advantage-item">
+              <div>
+                <strong>${item.title}</strong>
+                <span>${item.detail}</span>
+              </div>
+              <b>${item.score}</b>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+    <div class="founder-note">
+      <i data-lucide="lightbulb"></i>
+      <p>下一階段若接正式資料庫、推播、真人審核與 WebRTC 語音/視訊，就能從原型升級為可營運產品。</p>
+    </div>
+  `;
+
+  $$("[data-guide-view]").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.guideView));
+  });
   syncIcons();
 }
 
@@ -864,6 +1007,42 @@ function profileCompletion() {
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
 
+function verificationTrustScore() {
+  return Object.values(userProfile.verifications).filter(Boolean).length * 25;
+}
+
+function sharedInterestCount(profile) {
+  return profile.tags.filter((tag) => userProfile.interests.includes(tag)).length;
+}
+
+function matchQualitySignals(profile) {
+  const shared = sharedInterestCount(profile);
+  const trust = verificationTrustScore();
+  const intentAligned = userProfile.bio.includes("穩定") || profile.goal.includes("穩定");
+  return [
+    {
+      label: "共同興趣",
+      score: Math.min(98, 58 + shared * 18),
+      detail: shared ? `有 ${shared} 個共同興趣：${profile.tags.filter((tag) => userProfile.interests.includes(tag)).join("、")}` : "可先用房間或遊戲建立共同話題",
+    },
+    {
+      label: "信任安全",
+      score: Math.min(100, trust + (profile.verified.includes("照片") ? 12 : 6)),
+      detail: `${profile.verified}，你的驗證完成度 ${trust}%`,
+    },
+    {
+      label: "關係目標",
+      score: intentAligned ? 92 : 76,
+      detail: `${profile.name} 目前偏向「${profile.goal}」，適合先確認期待`,
+    },
+    {
+      label: "互動節奏",
+      score: profile.online ? 89 : 78,
+      detail: `${profile.chatStyle}，建議前 3 則訊息一問一分享`,
+    },
+  ];
+}
+
 function syncProfileMini() {
   const image = $(".profile-mini img");
   const name = $(".profile-mini strong");
@@ -1190,6 +1369,7 @@ function renderProfileCard() {
   $("#superBtn").addEventListener("click", () => likeProfile(true));
   $("#likeBtn").addEventListener("click", () => likeProfile(false));
   renderInsights(profile);
+  renderMarketBreaker(profile);
   syncIcons();
 }
 
@@ -1210,6 +1390,46 @@ function renderInsights(profile) {
       `,
     )
     .join("");
+}
+
+function renderMarketBreaker(profile) {
+  const signals = matchQualitySignals(profile);
+  const average = Math.round(signals.reduce((sum, signal) => sum + signal.score, 0) / signals.length);
+  const nextRoom = rooms.find((room) => room.tags.some((tag) => profile.tags.includes(tag))) || rooms[0];
+
+  $("#marketBreakerPanel").innerHTML = `
+    <div class="panel-title compact-title">
+      <i data-lucide="scan-heart"></i>
+      <h3>品質配對雷達</h3>
+    </div>
+    <div class="quality-score">
+      <span>深度適合度</span>
+      <strong>${average}%</strong>
+    </div>
+    <div class="quality-signal-list">
+      ${signals
+        .map(
+          (signal) => `
+            <article>
+              <div>
+                <strong>${signal.label}</strong>
+                <span>${signal.score}%</span>
+              </div>
+              <meter min="0" max="100" value="${signal.score}"></meter>
+              <p>${signal.detail}</p>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+    <div class="next-best-action">
+      <i data-lucide="route"></i>
+      <div>
+        <strong>下一步建議</strong>
+        <span>先邀請 ${profile.name} 到「${nextRoom.title}」，再用 AI 開場白降低尷尬。</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderOptions(options, selected) {
@@ -1828,11 +2048,18 @@ function boostRemainingText() {
 }
 
 function aiAdviceFor(person) {
+  const trust = verificationTrustScore();
+  const shared = person.tags.filter((tag) => userProfile.interests.includes(tag));
   return {
     opener: `看到你也喜歡${person.tags[0]}，我很好奇你最近一次因為這件事覺得生活變亮是什麼時候？`,
     plan: `${person.dateIdea}。建議先約 60 到 90 分鐘，保留彼此想再見面的空間。`,
     rhythm: `${person.chatStyle}。前 3 則訊息可以用一問一分享，避免像面試。`,
     safety: `${person.verified}，距離 ${person.distance} km。第一次見面建議選白天、人多、可自行離開的地點。`,
+    checkin: `出門前把地點、時間與對方暱稱分享給信任的人；約會開始後 ${trust >= 75 ? "60" : "30"} 分鐘做一次安全確認。`,
+    why: shared.length
+      ? `你們可從「${shared.join("、")}」切入，這比外貌滑卡更容易產生持續聊天。`
+      : `先用多人房間或破冰遊戲建立低壓共同經驗，再轉一對一聊天。`,
+    nextStep: trust >= 75 ? "可進入一對一約會提案" : "先完成自拍或身分驗證，提高推薦權重",
   };
 }
 
@@ -1880,6 +2107,29 @@ function renderAiBoost() {
           <span>查看安全中心</span>
         </button>
       </article>
+    </div>
+    <div class="dating-os-panel">
+      <div>
+        <span class="eyebrow">Relationship OS</span>
+        <h4>AI 約會副駕</h4>
+        <p>${escapeHtml(advice.why)}</p>
+      </div>
+      <div class="date-plan-grid">
+        <span><i data-lucide="map"></i>${escapeHtml(advice.plan)}</span>
+        <span><i data-lucide="message-circle-heart"></i>${escapeHtml(advice.rhythm)}</span>
+        <span><i data-lucide="shield-alert"></i>${escapeHtml(advice.checkin)}</span>
+        <span><i data-lucide="move-right"></i>${escapeHtml(advice.nextStep)}</span>
+      </div>
+      <div class="dating-os-actions">
+        <button class="primary-action" type="button" data-ai-action="date-plan">
+          <i data-lucide="calendar-plus"></i>
+          <span>送出約會提案</span>
+        </button>
+        <button class="ghost-action" type="button" data-ai-action="share-checkin">
+          <i data-lucide="shield-check"></i>
+          <span>開啟安全計畫</span>
+        </button>
+      </div>
     </div>
   `;
 
@@ -1935,6 +2185,15 @@ function handleAiAction(action) {
     setView("safety");
     return;
   }
+  if (action === "date-plan") {
+    startConversationWith(target.id, advice.plan);
+    return;
+  }
+  if (action === "share-checkin") {
+    setView("safety");
+    showToast("已切換到安全中心，可設定驗證與防騷擾功能");
+    return;
+  }
   if (action === "boost") {
     startBoost();
     return;
@@ -1964,15 +2223,17 @@ function renderGrowth() {
   const matchesToday = state.dynamicMetrics?.matchesToday || 64;
   const messagesPerHour = state.dynamicMetrics?.messagesPerHour || 420;
   const completion = profileCompletion();
+  const cloudLive = dynamicModeIsLive();
+  const platformName = dynamicPlatformLabel();
   $("#growthPanel").innerHTML = `
     <div class="panel-title">
       <i data-lucide="line-chart"></i>
       <h3>產品優化儀表板</h3>
     </div>
-    <div class="dynamic-banner ${state.dynamicMode === "netlify-functions" ? "is-live" : ""}">
-      <i data-lucide="${state.dynamicMode === "netlify-functions" ? "cloud-check" : "cloud-off"}"></i>
+    <div class="dynamic-banner ${cloudLive ? "is-live" : ""}">
+      <i data-lucide="${cloudLive ? "cloud-check" : "cloud-off"}"></i>
       <div>
-        <strong>${state.dynamicMode === "netlify-functions" ? "已連線 Netlify Functions" : "使用本機示範資料"}</strong>
+        <strong>${cloudLive ? `已連線 ${platformName}` : "使用本機示範資料"}</strong>
         <span>${state.lastSyncAt ? `最後同步 ${new Date(state.lastSyncAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}` : "部署後會自動讀取動態 API"}</span>
       </div>
       <button class="ghost-action" type="button" id="refreshDynamicBtn">
@@ -1984,7 +2245,7 @@ function renderGrowth() {
       <div>
         <span class="eyebrow">Remote Access</span>
         <h3>手機、電腦、網頁版遠端連線</h3>
-        <p>部署後使用同一個 Netlify 公開網址即可在手機瀏覽器、桌機瀏覽器與安裝式 PWA 開啟。動態資料會從雲端 API 同步。</p>
+        <p>部署後使用同一個公開網址即可在手機瀏覽器、桌機瀏覽器與安裝式 PWA 開啟。動態資料會從 Netlify 或 Vercel 的雲端 API 同步。</p>
       </div>
       <div class="remote-url-box">
         <input id="remoteUrlInput" value="${escapeHtml(location.origin.startsWith("http") ? location.origin : "部署後顯示公開網址")}" readonly />
@@ -2414,6 +2675,11 @@ function wireEvents() {
     showToast("已切換到快速配對");
   });
 
+  $("#startGuideBtn").addEventListener("click", () => {
+    setView("profile");
+    showToast("先完成檔案，系統會給出更準的配對與約會建議");
+  });
+
   $("#globalSearch").addEventListener("input", handleGlobalSearch);
 
   $("#saveProfileBtn").addEventListener("click", () => {
@@ -2474,6 +2740,7 @@ function init() {
   renderRooms();
   renderRoomStage();
   renderMultiplayerPanel();
+  renderGuide();
   renderProfileEditor();
   renderProfileCard();
   renderExplore();
