@@ -1447,6 +1447,11 @@ async function toggleMic() {
     return;
   }
 
+  if (!window.isSecureContext) {
+    showToast("IP 模式可多人聊天、配對與遊戲；麥克風需 HTTPS，請用 Vercel 連結或 HTTPS tunnel。");
+    return;
+  }
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     state.micStream = stream;

@@ -1,11 +1,22 @@
 import { createReadStream, existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
+import { networkInterfaces } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import appDataHandler from "./api/app-data.js";
+import realtimeHandler from "./api/realtime.js";
+import waitlistHandler from "./api/waitlist.js";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const startPort = Number(process.env.PORT || 5173);
+const host = process.env.HOST || "0.0.0.0";
+
+const apiHandlers = new Map([
+  ["/api/app-data", appDataHandler],
+  ["/api/realtime", realtimeHandler],
+  ["/api/waitlist", waitlistHandler],
+]);
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -26,8 +37,66 @@ function safePath(requestUrl) {
   return requested.startsWith(root) ? requested : join(root, "index.html");
 }
 
+function queryFromUrl(requestUrl) {
+  const url = new URL(requestUrl || "/", "http://localhost");
+  return Object.fromEntries(url.searchParams.entries());
+}
+
+function vercelResponseAdapter(response) {
+  let statusCode = 200;
+  const headers = {};
+
+  return {
+    setHeader(key, value) {
+      headers[key] = value;
+      return this;
+    },
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(data) {
+      headers["Content-Type"] ||= "application/json; charset=utf-8";
+      response.writeHead(statusCode, headers);
+      response.end(JSON.stringify(data));
+      return this;
+    },
+    end(data = "") {
+      response.writeHead(statusCode, headers);
+      response.end(data);
+      return this;
+    },
+  };
+}
+
+async function handleApi(request, response) {
+  const url = new URL(request.url || "/", "http://localhost");
+  const handler = apiHandlers.get(url.pathname);
+  if (!handler) return false;
+
+  request.query = queryFromUrl(request.url);
+
+  try {
+    await handler(request, vercelResponseAdapter(response));
+  } catch (error) {
+    response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ error: "Local API error", message: error.message }));
+  }
+
+  return true;
+}
+
+function localNetworkUrls(port) {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((item) => item && item.family === "IPv4" && !item.internal)
+    .map((item) => `http://${item.address}:${port}`);
+}
+
 function start(port) {
   const server = createServer(async (request, response) => {
+    if (await handleApi(request, response)) return;
+
     const filePath = safePath(request.url || "/");
     const target = existsSync(filePath) ? filePath : join(root, "index.html");
 
@@ -53,8 +122,11 @@ function start(port) {
     process.exitCode = 1;
   });
 
-  server.listen(port, () => {
-    console.log(`Pair Room running: http://localhost:${port}`);
+  server.listen(port, host, () => {
+    console.log(`Pair Room local: http://localhost:${port}`);
+    localNetworkUrls(port).forEach((url) => console.log(`Pair Room LAN:   ${url}`));
+    console.log("Other users on the same Wi-Fi can open the LAN URL to join the same rooms.");
+    console.log("Chat, matching, and games work over LAN IP. Browser microphone access requires HTTPS.");
   });
 }
 

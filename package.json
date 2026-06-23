@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check app.js && node --check api/app-data.js && node --check api/waitlist.js && node --check api/realtime.js && node --check netlify/functions/app-data.mts && node --check netlify/functions/realtime.mts"
+    "start": "node server.mjs",
+    "start:lan": "node server.mjs",
+    "check": "node --check server.mjs && node --check app.js && node --check api/app-data.js && node --check api/waitlist.js && node --check api/realtime.js && node --check netlify/functions/app-data.mts && node --check netlify/functions/realtime.mts"
   },
   "dependencies": {
     "@netlify/blobs": "latest"
