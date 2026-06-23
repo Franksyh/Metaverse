@@ -173,6 +173,7 @@ const quizQuestions = [
 
 const memoryValues = ["咖啡", "電影", "音樂", "料理", "展覽", "夜景"];
 const STORAGE_KEY = "pair-room-state-v2";
+const PUBLIC_REMOTE_URL = "https://pair-room-dating-site.vercel.app";
 
 const userProfile = {
   name: "Frank",
@@ -598,6 +599,20 @@ function dynamicPlatformLabel() {
   return "本機示範資料";
 }
 
+function isPrivateNetworkHost(hostname = location.hostname) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("10.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}
+
+function crossIpJoinUrl() {
+  return isPrivateNetworkHost() ? PUBLIC_REMOTE_URL : location.origin;
+}
+
 function renderGuide() {
   const completion = profileCompletion();
   const trust = verificationTrustScore();
@@ -638,7 +653,7 @@ function renderGuide() {
     <div class="guide-current">
       <span><i data-lucide="radio"></i> 目前房間：${escapeHtml(activeRoom.title)}</span>
       <span><i data-lucide="shield-check"></i> 信任分數：${trust}%</span>
-      <span><i data-lucide="cloud"></i> 雲端狀態：${dynamicPlatformLabel()}</span>
+      <span><i data-lucide="cloud"></i> 不同 IP 加入：${escapeHtml(crossIpJoinUrl())}</span>
     </div>
   `;
 
@@ -664,7 +679,7 @@ function renderGuide() {
     </div>
     <div class="founder-note">
       <i data-lucide="lightbulb"></i>
-      <p>下一階段若接正式資料庫、推播、真人審核與 WebRTC 語音/視訊，就能從原型升級為可營運產品。</p>
+      <p>不同網路、不同 IP 的使用者請用公開 HTTPS 網址加入；同 Wi-Fi 才使用本機 LAN IP。下一階段若接正式資料庫、推播、真人審核與 WebRTC 語音/視訊，就能從原型升級為可營運產品。</p>
     </div>
   `;
 
@@ -2451,20 +2466,20 @@ function renderGrowth() {
     <div class="remote-access-panel">
       <div>
         <span class="eyebrow">Remote Access</span>
-        <h3>手機、電腦、網頁版遠端連線</h3>
-        <p>部署後使用同一個公開網址即可在手機瀏覽器、桌機瀏覽器與安裝式 PWA 開啟。動態資料會從 Netlify 或 Vercel 的雲端 API 同步。</p>
+        <h3>不同 IP / 不同網路遠端連線</h3>
+        <p>不同網路、不同 IP 的真人請使用 Vercel 公開 HTTPS 網址加入同一個房間；只有同 Wi-Fi 測試才使用本機 LAN IP。聊天、配對與遊戲會透過雲端 API 同步。</p>
       </div>
       <div class="remote-url-box">
-        <input id="remoteUrlInput" value="${escapeHtml(location.origin.startsWith("http") ? location.origin : "部署後顯示公開網址")}" readonly />
+        <input id="remoteUrlInput" value="${escapeHtml(crossIpJoinUrl())}" readonly />
         <button class="primary-action" type="button" id="copyRemoteUrlBtn">
           <i data-lucide="copy"></i>
-          <span>複製連結</span>
+          <span>複製不同 IP 連結</span>
         </button>
       </div>
       <div class="device-support-grid">
         <span><i data-lucide="smartphone"></i>手機版</span>
         <span><i data-lucide="monitor"></i>電腦版</span>
-        <span><i data-lucide="globe-2"></i>網頁遠端</span>
+        <span><i data-lucide="globe-2"></i>不同 IP</span>
         <span><i data-lucide="wifi"></i>雲端 API</span>
       </div>
     </div>

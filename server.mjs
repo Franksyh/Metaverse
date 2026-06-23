@@ -11,6 +11,7 @@ import waitlistHandler from "./api/waitlist.js";
 const root = fileURLToPath(new URL(".", import.meta.url));
 const startPort = Number(process.env.PORT || 5173);
 const host = process.env.HOST || "0.0.0.0";
+const publicRemoteUrl = "https://pair-room-dating-site.vercel.app";
 
 const apiHandlers = new Map([
   ["/api/app-data", appDataHandler],
@@ -125,7 +126,8 @@ function start(port) {
   server.listen(port, host, () => {
     console.log(`Pair Room local: http://localhost:${port}`);
     localNetworkUrls(port).forEach((url) => console.log(`Pair Room LAN:   ${url}`));
-    console.log("Other users on the same Wi-Fi can open the LAN URL to join the same rooms.");
+    console.log(`Pair Room public for different IPs: ${publicRemoteUrl}`);
+    console.log("Same Wi-Fi users can open the LAN URL. Different-network users should open the public URL.");
     console.log("Chat, matching, and games work over LAN IP. Browser microphone access requires HTTPS.");
   });
 }
