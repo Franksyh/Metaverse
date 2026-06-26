@@ -1,4 +1,13 @@
+function applyCors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  return res;
+}
+
 function sendJson(res, status, data) {
+  applyCors(res);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store, max-age=0");
   return res.status(status).json(data);
@@ -40,6 +49,7 @@ function buildAppData() {
 }
 
 export default function handler(req, res) {
+  applyCors(res);
   if (req.method === "OPTIONS") return res.status(204).end();
 
   if (req.method !== "GET") {

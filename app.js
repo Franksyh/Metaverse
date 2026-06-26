@@ -173,6 +173,7 @@ const quizQuestions = [
 
 const memoryValues = ["咖啡", "電影", "音樂", "料理", "展覽", "夜景"];
 const STORAGE_KEY = "pair-room-state-v2";
+const CONNECTION_KEY = "pair-room-connection-v1";
 const PUBLIC_REMOTE_URL = "https://pair-room-dating-site.vercel.app";
 
 const userProfile = {
@@ -351,6 +352,11 @@ const state = {
   liveCapabilities: null,
   liveOnlineCount: 0,
   liveLastSyncAt: null,
+  connectionBaseUrl: "",
+  connectionReady: false,
+  connectionWarning: "",
+  dynamicSyncTimer: null,
+  realtimeSyncTimer: null,
   voiceLevel: 0,
   voiceSyncTimer: null,
   installPrompt: null,
@@ -518,6 +524,160 @@ function deviceLabel(device) {
   }[device] || "網頁";
 }
 
+function defaultConnectionBaseUrl() {
+  if (location.protocol === "http:" || location.protocol === "https:") {
+    return location.origin;
+  }
+  return PUBLIC_REMOTE_URL;
+}
+
+function normalizeConnectionBaseUrl(value) {
+  const raw = String(value || "").trim();
+  const baseValue = raw || defaultConnectionBaseUrl();
+  const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(baseValue) ? baseValue : `http://${baseValue}`;
+  const url = new URL(withProtocol);
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw new Error("Only http and https URLs can be used.");
+  }
+  if (!url.port && isPrivateNetworkHost(url.hostname) && !raw.includes("://") && !raw.includes("/")) {
+    url.port = location.port || "5173";
+  }
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.origin;
+}
+
+function roomIdFromInput(value) {
+  return (
+    String(value || state.currentRoomId || "late-night")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80) || "late-night"
+  );
+}
+
+function connectionWarningFor(baseUrl) {
+  try {
+    const url = new URL(baseUrl);
+    if (location.protocol === "https:" && url.protocol === "http:") {
+      return "目前頁面是 HTTPS，瀏覽器會擋住 HTTP IP。請改用公開 HTTPS 網址，或直接用 http://IP:PORT 開啟網站。";
+    }
+    return "";
+  } catch {
+    return "連線網址格式不正確。";
+  }
+}
+
+function connectionDisplayUrl() {
+  return state.connectionBaseUrl || defaultConnectionBaseUrl();
+}
+
+function shortConnectionLabel() {
+  try {
+    const url = new URL(connectionDisplayUrl());
+    return url.host;
+  } catch {
+    return "not set";
+  }
+}
+
+function isSameOriginConnection(baseUrl = connectionDisplayUrl()) {
+  try {
+    return new URL(baseUrl).origin === location.origin;
+  } catch {
+    return true;
+  }
+}
+
+function apiUrl(path) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const baseUrl = connectionDisplayUrl();
+  if (isSameOriginConnection(baseUrl)) return normalizedPath;
+  return `${baseUrl}${normalizedPath}`;
+}
+
+function saveConnectionSettings() {
+  try {
+    localStorage.setItem(
+      CONNECTION_KEY,
+      JSON.stringify({
+        baseUrl: state.connectionBaseUrl,
+        roomId: state.currentRoomId,
+      }),
+    );
+  } catch {
+    // The connection still works for the current visit.
+  }
+}
+
+function loadConnectionSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CONNECTION_KEY) || "{}");
+    state.connectionBaseUrl = normalizeConnectionBaseUrl(saved.baseUrl || defaultConnectionBaseUrl());
+    if (saved.roomId) state.currentRoomId = roomIdFromInput(saved.roomId);
+  } catch {
+    state.connectionBaseUrl = normalizeConnectionBaseUrl(defaultConnectionBaseUrl());
+  }
+  state.connectionWarning = connectionWarningFor(state.connectionBaseUrl);
+}
+
+function applyConnectionSettings(baseUrl, roomId, options = {}) {
+  state.connectionBaseUrl = normalizeConnectionBaseUrl(baseUrl);
+  state.currentRoomId = roomIdFromInput(roomId);
+  state.connectionWarning = connectionWarningFor(state.connectionBaseUrl);
+  state.connectionReady = true;
+  if (options.save !== false) saveConnectionSettings();
+  renderConnectionGate();
+  renderRooms(state.globalSearch);
+  renderRoomStage();
+  renderMultiplayerPanel();
+  renderGuide();
+  if (state.activeView === "growth") renderGrowth();
+  closeConnectionGate();
+  startLiveSyncLoops();
+}
+
+function renderConnectionGate() {
+  const gate = $("#connectionGate");
+  if (!gate) return;
+  const input = $("#connectionIpInput");
+  const roomInput = $("#connectionRoomInput");
+  const currentLabel = $("#connectionCurrentLabel");
+  const warning = $("#connectionWarning");
+  if (input && document.activeElement !== input) input.value = connectionDisplayUrl();
+  if (roomInput && document.activeElement !== roomInput) roomInput.value = state.currentRoomId;
+  if (currentLabel) currentLabel.textContent = `${shortConnectionLabel()} / ${state.currentRoomId}`;
+  if (warning) {
+    warning.textContent = state.connectionWarning || "輸入同一個 IP / 網址與房間代碼的人，會連到同一個多人房。";
+    warning.classList.toggle("is-warning", Boolean(state.connectionWarning));
+  }
+}
+
+function openConnectionGate() {
+  renderConnectionGate();
+  $("#connectionGate")?.classList.remove("is-hidden");
+  window.setTimeout(() => $("#connectionIpInput")?.focus(), 60);
+}
+
+function closeConnectionGate() {
+  $("#connectionGate")?.classList.add("is-hidden");
+}
+
+function startLiveSyncLoops() {
+  syncDynamicData();
+  syncRealtime("heartbeat");
+  if (!state.dynamicSyncTimer) {
+    state.dynamicSyncTimer = window.setInterval(syncDynamicData, 90000);
+  }
+  if (!state.realtimeSyncTimer) {
+    state.realtimeSyncTimer = window.setInterval(syncRealtime, 15000);
+  }
+}
+
 function loadSavedState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -610,7 +770,7 @@ function isPrivateNetworkHost(hostname = location.hostname) {
 }
 
 function crossIpJoinUrl() {
-  return isPrivateNetworkHost() ? PUBLIC_REMOTE_URL : location.origin;
+  return connectionDisplayUrl();
 }
 
 function renderGuide() {
@@ -719,8 +879,9 @@ function applyDynamicData(data) {
 }
 
 async function syncDynamicData() {
+  if (!state.connectionReady) return;
   try {
-    const response = await fetch("/api/app-data", {
+    const response = await fetch(apiUrl("/api/app-data"), {
       headers: { accept: "application/json" },
     });
     if (!response.ok) throw new Error("Dynamic API unavailable");
@@ -788,8 +949,9 @@ function applyRealtimeData(data) {
 }
 
 async function syncRealtime(action = "heartbeat", extra = {}) {
+  if (!state.connectionReady) return;
   try {
-    const response = await fetch("/api/realtime", {
+    const response = await fetch(apiUrl("/api/realtime"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(multiplayerPayload(action, extra)),
@@ -803,8 +965,9 @@ async function syncRealtime(action = "heartbeat", extra = {}) {
 }
 
 async function fetchRealtimeSnapshot() {
+  if (!state.connectionReady) return;
   try {
-    const response = await fetch(`/api/realtime?roomId=${encodeURIComponent(state.currentRoomId)}`, {
+    const response = await fetch(apiUrl(`/api/realtime?roomId=${encodeURIComponent(state.currentRoomId)}`), {
       headers: { accept: "application/json" },
     });
     if (!response.ok) throw new Error("Realtime API unavailable");
@@ -842,12 +1005,14 @@ async function nextLiveGameRound() {
 }
 
 function leaveRealtimeRoom() {
+  if (!state.connectionReady) return;
   const payload = JSON.stringify(multiplayerPayload("leave"));
+  const endpoint = apiUrl("/api/realtime");
   if (navigator.sendBeacon) {
-    navigator.sendBeacon("/api/realtime", new Blob([payload], { type: "application/json" }));
+    navigator.sendBeacon(endpoint, new Blob([payload], { type: "application/json" }));
     return;
   }
-  fetch("/api/realtime", {
+  fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: payload,
@@ -887,6 +1052,10 @@ function renderMultiplayerPanel() {
         <span>最後同步</span>
         <strong>${lastSync}</strong>
       </div>
+      <div>
+        <span>連線主機</span>
+        <strong title="${escapeHtml(connectionDisplayUrl())}">${escapeHtml(shortConnectionLabel())}</strong>
+      </div>
       <button class="ghost-action" type="button" id="refreshLiveBtn">
         <i data-lucide="refresh-cw"></i>
         <span>同步</span>
@@ -908,6 +1077,10 @@ function renderMultiplayerPanel() {
       <button class="ghost-action" type="button" id="nextGameBtn">
         <i data-lucide="shuffle"></i>
         <span>下一題</span>
+      </button>
+      <button class="ghost-action" type="button" id="openConnectionGateBtn">
+        <i data-lucide="network"></i>
+        <span>連線 IP</span>
       </button>
     </div>
     <div class="multiplayer-grid">
@@ -1065,6 +1238,7 @@ function renderMultiplayerPanel() {
   $("#voiceMuteLiveBtn")?.addEventListener("click", toggleMute);
   $("#randomMatchBtn")?.addEventListener("click", () => inviteLiveMatch());
   $("#nextGameBtn")?.addEventListener("click", nextLiveGameRound);
+  $("#openConnectionGateBtn")?.addEventListener("click", openConnectionGate);
   $$("[data-invite-session]").forEach((button) => {
     button.addEventListener("click", () => inviteLiveMatch(button.dataset.inviteSession));
   });
@@ -2583,7 +2757,7 @@ async function handleWaitlistSubmit(event) {
   const data = new FormData(form);
   try {
     const payload = Object.fromEntries(data.entries());
-    const apiResponse = await fetch("/api/waitlist", {
+    const apiResponse = await fetch(apiUrl("/api/waitlist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -2886,6 +3060,41 @@ function handleGlobalSearch(event) {
 }
 
 function wireEvents() {
+  $("#connectionForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const remember = true;
+    try {
+      const normalized = normalizeConnectionBaseUrl($("#connectionIpInput")?.value);
+      const warning = connectionWarningFor(normalized);
+      if (warning) {
+        state.connectionBaseUrl = normalized;
+        state.connectionWarning = warning;
+        renderConnectionGate();
+        showToast("這個 IP 會被瀏覽器擋下，請改用 HTTPS 或直接開 http://IP:PORT");
+        return;
+      }
+      applyConnectionSettings(normalized, $("#connectionRoomInput")?.value, { save: remember });
+      showToast(`已連線到 ${shortConnectionLabel()}`);
+    } catch {
+      state.connectionWarning = "請輸入有效的 IP 或網址，例如 http://192.168.66.53:5173";
+      renderConnectionGate();
+    }
+  });
+
+  $$("[data-connection-preset]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const value = button.dataset.connectionPreset === "public" ? PUBLIC_REMOTE_URL : defaultConnectionBaseUrl();
+      const input = $("#connectionIpInput");
+      if (input) input.value = value;
+      state.connectionWarning = connectionWarningFor(value);
+      const warning = $("#connectionWarning");
+      if (warning) {
+        warning.textContent = state.connectionWarning || "輸入同一個 IP / 網址與房間代碼的人，會連到同一個多人房。";
+        warning.classList.toggle("is-warning", Boolean(state.connectionWarning));
+      }
+    });
+  });
+
   $$(".nav-item").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
@@ -2958,6 +3167,7 @@ function wireEvents() {
 
 function init() {
   loadSavedState();
+  loadConnectionSettings();
   syncProfileMini();
   renderRooms();
   renderRoomStage();
@@ -2977,10 +3187,7 @@ function init() {
   renderSafetyCenter();
   wireEvents();
   registerPwa();
-  syncDynamicData();
-  syncRealtime("heartbeat");
-  window.setInterval(syncDynamicData, 90000);
-  window.setInterval(syncRealtime, 15000);
+  openConnectionGate();
   window.addEventListener("pagehide", leaveRealtimeRoom);
   syncIcons();
 }

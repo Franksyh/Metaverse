@@ -15,14 +15,26 @@ const GAME_PROMPTS = [
   "你希望理想對象具備哪一個很小但很重要的習慣？",
 ];
 
+const corsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "Content-Type, Accept",
+  "access-control-max-age": "86400",
+};
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
+      ...corsHeaders,
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
     },
   });
+}
+
+function preflight() {
+  return new Response("", { status: 204, headers: corsHeaders });
 }
 
 function text(value, fallback = "", limit = 500) {
@@ -252,6 +264,8 @@ function nextGameRound(state, payload, now) {
 }
 
 export default async (req) => {
+  if (req.method === "OPTIONS") return preflight();
+
   const url = new URL(req.url);
   const roomId = text(url.searchParams.get("roomId"), DEFAULT_ROOM_ID, 80);
   const store = getStore("pair-room-live", { consistency: "strong" });

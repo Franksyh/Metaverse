@@ -389,7 +389,7 @@ textarea {
 
 .multiplayer-status {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   gap: 10px;
   margin-bottom: 14px;
   padding: 12px;
@@ -417,7 +417,7 @@ textarea {
 
 .live-room-tools {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -2506,6 +2506,82 @@ textarea {
   font-size: 24px;
 }
 
+.connection-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(23, 33, 36, 0.68);
+  backdrop-filter: blur(12px);
+}
+
+.connection-gate.is-hidden {
+  display: none;
+}
+
+.connection-card {
+  display: grid;
+  gap: 14px;
+  width: min(520px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 22px 70px rgba(23, 33, 36, 0.28);
+}
+
+.connection-heading h2,
+.connection-heading p {
+  margin: 0;
+}
+
+.connection-heading h2 {
+  font-size: 28px;
+}
+
+.connection-heading p {
+  margin-top: 6px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.connection-field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.connection-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.connection-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.connection-warning {
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  background: var(--panel-soft);
+  line-height: 1.5;
+}
+
+.connection-warning.is-warning {
+  border-color: rgba(217, 78, 67, 0.36);
+  color: var(--coral-dark);
+  background: #fff1ef;
+}
+
 .toast {
   position: fixed;
   right: 20px;
@@ -2742,6 +2818,7 @@ textarea {
   .safety-actions,
   .remote-url-box,
   .device-support-grid,
+  .connection-presets,
   .multiplayer-status,
   .live-composer {
     display: grid;

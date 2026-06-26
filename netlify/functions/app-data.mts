@@ -1,11 +1,23 @@
+const corsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "Content-Type, Accept",
+  "access-control-max-age": "86400",
+};
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
+      ...corsHeaders,
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
     },
   });
+}
+
+function preflight() {
+  return new Response("", { status: 204, headers: corsHeaders });
 }
 
 function liveNumber(seed, min, max) {
@@ -70,6 +82,8 @@ async function waitlist(req) {
 }
 
 export default async (req) => {
+  if (req.method === "OPTIONS") return preflight();
+
   const url = new URL(req.url);
   if (url.pathname === "/api/waitlist") {
     return waitlist(req);
