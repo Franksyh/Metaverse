@@ -607,6 +607,7 @@ function saveConnectionSettings() {
       JSON.stringify({
         baseUrl: state.connectionBaseUrl,
         roomId: state.currentRoomId,
+        name: userProfile.name,
       }),
     );
   } catch {
@@ -619,18 +620,22 @@ function loadConnectionSettings() {
     const saved = JSON.parse(localStorage.getItem(CONNECTION_KEY) || "{}");
     state.connectionBaseUrl = normalizeConnectionBaseUrl(saved.baseUrl || defaultConnectionBaseUrl());
     if (saved.roomId) state.currentRoomId = roomIdFromInput(saved.roomId);
+    if (saved.name) userProfile.name = String(saved.name).trim().slice(0, 40);
   } catch {
     state.connectionBaseUrl = normalizeConnectionBaseUrl(defaultConnectionBaseUrl());
   }
   state.connectionWarning = connectionWarningFor(state.connectionBaseUrl);
 }
 
-function applyConnectionSettings(baseUrl, roomId, options = {}) {
+function applyConnectionSettings(baseUrl, roomId, name, options = {}) {
   state.connectionBaseUrl = normalizeConnectionBaseUrl(baseUrl);
   state.currentRoomId = roomIdFromInput(roomId);
+  userProfile.name = String(name || "").trim().slice(0, 40) || "訪客";
   state.connectionWarning = connectionWarningFor(state.connectionBaseUrl);
   state.connectionReady = true;
   if (options.save !== false) saveConnectionSettings();
+  document.body.classList.remove("connection-pending");
+  syncProfileMini();
   renderConnectionGate();
   renderRooms(state.globalSearch);
   renderRoomStage();
@@ -645,26 +650,31 @@ function renderConnectionGate() {
   const gate = $("#connectionGate");
   if (!gate) return;
   const input = $("#connectionIpInput");
+  const nameInput = $("#connectionNameInput");
   const roomInput = $("#connectionRoomInput");
   const currentLabel = $("#connectionCurrentLabel");
   const warning = $("#connectionWarning");
+  if (nameInput && document.activeElement !== nameInput) nameInput.value = userProfile.name || "";
   if (input && document.activeElement !== input) input.value = connectionDisplayUrl();
   if (roomInput && document.activeElement !== roomInput) roomInput.value = state.currentRoomId;
   if (currentLabel) currentLabel.textContent = `${shortConnectionLabel()} / ${state.currentRoomId}`;
   if (warning) {
-    warning.textContent = state.connectionWarning || "輸入同一個 IP / 網址與房間代碼的人，會連到同一個多人房。";
+    warning.textContent =
+      state.connectionWarning || "同 Wi-Fi 可輸入電腦的 LAN IP；不同網路請選「跨網路公開伺服器」。";
     warning.classList.toggle("is-warning", Boolean(state.connectionWarning));
   }
 }
 
 function openConnectionGate() {
+  document.body.classList.add("connection-pending");
   renderConnectionGate();
   $("#connectionGate")?.classList.remove("is-hidden");
-  window.setTimeout(() => $("#connectionIpInput")?.focus(), 60);
+  window.setTimeout(() => $("#connectionNameInput")?.focus(), 60);
 }
 
 function closeConnectionGate() {
   $("#connectionGate")?.classList.add("is-hidden");
+  document.body.classList.remove("connection-pending");
 }
 
 function startLiveSyncLoops() {
@@ -869,9 +879,6 @@ function applyDynamicData(data) {
     });
   }
 
-  const onlineNow = state.dynamicMetrics?.onlineNow || 128;
-  $("#statusText").textContent = `${dynamicPlatformLabel()} 同步中：${onlineNow} 位新朋友在線`;
-
   renderRooms(state.globalSearch);
   renderRoomStage();
   if (state.activeView === "growth") renderGrowth();
@@ -944,6 +951,10 @@ function applyRealtimeData(data) {
   state.liveCapabilities = data.capabilities || null;
   state.liveOnlineCount = Number(data.allOnline || state.liveParticipants.length);
   state.liveLastSyncAt = data.generatedAt || new Date().toISOString();
+  const statusText = $("#statusText");
+  if (statusText) {
+    statusText.textContent = `${state.currentRoomId} 房 · ${state.liveOnlineCount || state.liveParticipants.length} 人在線`;
+  }
   renderMultiplayerPanel();
   if (state.activeView === "growth") renderGrowth();
 }
@@ -3064,6 +3075,12 @@ function wireEvents() {
     event.preventDefault();
     const remember = true;
     try {
+      const name = String($("#connectionNameInput")?.value || "").trim();
+      if (!name) {
+        state.connectionWarning = "請先輸入你的真人暱稱。";
+        renderConnectionGate();
+        return;
+      }
       const normalized = normalizeConnectionBaseUrl($("#connectionIpInput")?.value);
       const warning = connectionWarningFor(normalized);
       if (warning) {
@@ -3073,7 +3090,7 @@ function wireEvents() {
         showToast("這個 IP 會被瀏覽器擋下，請改用 HTTPS 或直接開 http://IP:PORT");
         return;
       }
-      applyConnectionSettings(normalized, $("#connectionRoomInput")?.value, { save: remember });
+      applyConnectionSettings(normalized, $("#connectionRoomInput")?.value, name, { save: remember });
       showToast(`已連線到 ${shortConnectionLabel()}`);
     } catch {
       state.connectionWarning = "請輸入有效的 IP 或網址，例如 http://192.168.66.53:5173";
@@ -3089,7 +3106,8 @@ function wireEvents() {
       state.connectionWarning = connectionWarningFor(value);
       const warning = $("#connectionWarning");
       if (warning) {
-        warning.textContent = state.connectionWarning || "輸入同一個 IP / 網址與房間代碼的人，會連到同一個多人房。";
+        warning.textContent =
+          state.connectionWarning || "同 Wi-Fi 可輸入電腦的 LAN IP；不同網路請選「跨網路公開伺服器」。";
         warning.classList.toggle("is-warning", Boolean(state.connectionWarning));
       }
     });
@@ -3102,8 +3120,8 @@ function wireEvents() {
   $("#profileSettingsBtn").addEventListener("click", () => setView("profile"));
 
   $("#quickMatchBtn").addEventListener("click", () => {
-    setView("match");
-    showToast("已切換到快速配對");
+    setView("rooms");
+    inviteLiveMatch();
   });
 
   $("#startGuideBtn").addEventListener("click", () => {

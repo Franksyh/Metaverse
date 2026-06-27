@@ -35,6 +35,12 @@ body {
     sans-serif;
 }
 
+body.connection-pending .app-shell {
+  pointer-events: none;
+  user-select: none;
+  filter: blur(3px);
+}
+
 button,
 input,
 select,
@@ -2545,6 +2551,31 @@ textarea {
   margin-top: 6px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+.connection-current {
+  margin: 0;
+  color: var(--teal);
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.demo-preview {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.demo-preview summary {
+  padding: 18px 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.demo-preview[open] summary {
+  color: var(--ink);
 }
 
 .connection-field {

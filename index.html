@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="緣房間是一個結合語音房、AI 配對、動態廣場與安全中心的交友產品原型。"
+      content="緣房間是一個可由不同裝置連入同一伺服器與房間的多人交友網站。"
     />
     <meta name="theme-color" content="#087f7b" />
     <title>緣房間 | 交友語音配對</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="connection-pending">
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
@@ -35,38 +35,6 @@
           <button class="nav-item" data-view="profile">
             <i data-lucide="user-round"></i>
             <span>檔案</span>
-          </button>
-          <button class="nav-item" data-view="match">
-            <i data-lucide="sparkles"></i>
-            <span>配對</span>
-          </button>
-          <button class="nav-item" data-view="explore">
-            <i data-lucide="sliders-horizontal"></i>
-            <span>探索</span>
-          </button>
-          <button class="nav-item" data-view="nearby">
-            <i data-lucide="map-pin"></i>
-            <span>附近</span>
-          </button>
-          <button class="nav-item" data-view="chat">
-            <i data-lucide="messages-square"></i>
-            <span>聊天</span>
-          </button>
-          <button class="nav-item" data-view="moments">
-            <i data-lucide="images"></i>
-            <span>動態</span>
-          </button>
-          <button class="nav-item" data-view="games">
-            <i data-lucide="gamepad-2"></i>
-            <span>遊戲</span>
-          </button>
-          <button class="nav-item" data-view="ai">
-            <i data-lucide="bot"></i>
-            <span>AI</span>
-          </button>
-          <button class="nav-item" data-view="growth">
-            <i data-lucide="line-chart"></i>
-            <span>上線</span>
           </button>
           <button class="nav-item" data-view="safety">
             <i data-lucide="shield-check"></i>
@@ -93,7 +61,7 @@
         <header class="topbar">
           <div class="topbar-title">
             <span class="live-dot"></span>
-            <span id="statusText">今晚有 128 位新朋友在線</span>
+            <span id="statusText">尚未連線</span>
           </div>
           <label class="search-box">
             <i data-lucide="search"></i>
@@ -108,8 +76,8 @@
         <section class="view is-active" id="rooms-view" aria-labelledby="roomsTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Voice Rooms</p>
-              <h2 id="roomsTitle">語音房間</h2>
+              <p class="eyebrow">Live Room</p>
+              <h2 id="roomsTitle">真人多人連線房</h2>
             </div>
             <div class="segmented-control" role="tablist" aria-label="房間分類">
               <button class="is-active" type="button">推薦</button>
@@ -118,11 +86,14 @@
             </div>
           </div>
 
-          <div class="rooms-layout">
-            <div class="rooms-grid" id="roomsGrid"></div>
-            <aside class="room-stage" id="roomStage" aria-live="polite"></aside>
-          </div>
           <section class="multiplayer-panel" id="multiplayerPanel" aria-live="polite"></section>
+          <details class="demo-preview">
+            <summary>查看產品功能預覽（以下人物不是線上真人）</summary>
+            <div class="rooms-layout">
+              <div class="rooms-grid" id="roomsGrid"></div>
+              <aside class="room-stage" id="roomStage" aria-live="polite"></aside>
+            </div>
+          </details>
         </section>
 
         <section class="view" id="guide-view" aria-labelledby="guideTitle">
@@ -428,20 +399,24 @@
       </main>
     </div>
 
-    <div class="connection-gate is-hidden" id="connectionGate" role="dialog" aria-modal="true" aria-labelledby="connectionTitle">
+    <div class="connection-gate" id="connectionGate" role="dialog" aria-modal="true" aria-labelledby="connectionTitle">
       <form class="connection-card" id="connectionForm">
         <div class="connection-heading">
-          <span class="eyebrow">Connect</span>
-          <h2 id="connectionTitle">輸入連線 IP</h2>
-          <p id="connectionCurrentLabel">not set</p>
+          <span class="eyebrow">真人多人連線</span>
+          <h2 id="connectionTitle">輸入 IP，加入同一個房間</h2>
+          <p>每位真人使用者都要輸入暱稱、相同伺服器網址與相同房間碼。</p>
         </div>
         <label class="connection-field">
-          <span>IP 或公開網址</span>
-          <input id="connectionIpInput" type="text" inputmode="url" autocomplete="url" placeholder="http://192.168.66.53:5173" />
+          <span>你的真人暱稱</span>
+          <input id="connectionNameInput" type="text" autocomplete="nickname" maxlength="40" placeholder="例如：Frank" required />
+        </label>
+        <label class="connection-field">
+          <span>伺服器 IP 或公開網址</span>
+          <input id="connectionIpInput" type="text" inputmode="url" autocomplete="url" placeholder="http://192.168.66.53:5173" required />
         </label>
         <label class="connection-field">
           <span>房間代碼</span>
-          <input id="connectionRoomInput" type="text" autocomplete="off" placeholder="late-night" />
+          <input id="connectionRoomInput" type="text" autocomplete="off" maxlength="80" placeholder="late-night" required />
         </label>
         <div class="connection-presets">
           <button class="ghost-action" type="button" data-connection-preset="current">
@@ -450,10 +425,11 @@
           </button>
           <button class="ghost-action" type="button" data-connection-preset="public">
             <i data-lucide="globe-2"></i>
-            <span>公開網址</span>
+            <span>跨網路公開伺服器</span>
           </button>
         </div>
-        <p class="connection-warning" id="connectionWarning">輸入同一個 IP / 網址與房間代碼的人，會連到同一個多人房。</p>
+        <p class="connection-current" id="connectionCurrentLabel">尚未連線</p>
+        <p class="connection-warning" id="connectionWarning">同 Wi-Fi 可輸入電腦的 LAN IP；不同網路請選「跨網路公開伺服器」。</p>
         <button class="primary-action stretch" type="submit">
           <i data-lucide="log-in"></i>
           <span>開始連線</span>
