@@ -19,7 +19,9 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
       .then(() => self.clients.matchAll({ type: "window" }))
-      .then((clients) => Promise.all(clients.map((client) => client.navigate(client.url)))),
+      .then((clients) => {
+        clients.forEach((client) => client.navigate(client.url));
+      }),
   );
 });
 
