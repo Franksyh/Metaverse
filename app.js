@@ -489,6 +489,12 @@ const state = {
   muted: false,
   micStream: null,
   audioContext: null,
+  fxAudioContext: null,
+  musicTimer: null,
+  musicStep: 0,
+  soundEnabled: true,
+  musicEnabled: true,
+  fxLayer: null,
   analyser: null,
   waveTimer: null,
   voiceBridgeStatus: "idle",
@@ -584,6 +590,140 @@ function showToast(message) {
   }, 2600);
 }
 
+function ensureFxLayer() {
+  if (state.fxLayer && document.body.contains(state.fxLayer)) return state.fxLayer;
+  let layer = $("#fxLayer");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.id = "fxLayer";
+    layer.className = "game-fx-layer";
+    document.body.append(layer);
+  }
+  state.fxLayer = layer;
+  return layer;
+}
+
+async function ensureFxAudioContext() {
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor || !state.soundEnabled) return null;
+  state.fxAudioContext ||= new AudioCtor();
+  if (state.fxAudioContext.state === "suspended") {
+    try {
+      await state.fxAudioContext.resume();
+    } catch {}
+  }
+  return state.fxAudioContext;
+}
+
+function fxAnchor(element) {
+  if (!element?.getBoundingClientRect) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+async function playGameSound(kind = "tap") {
+  const context = await ensureFxAudioContext();
+  if (!context) return;
+  const now = context.currentTime;
+  const presets = {
+    tap: { tones: [520], wave: "triangle", duration: 0.09, gain: 0.03 },
+    send: { tones: [640, 820], wave: "triangle", duration: 0.12, gain: 0.04 },
+    mode: { tones: [360, 520, 720], wave: "sine", duration: 0.18, gain: 0.04 },
+    dice: { tones: [220, 300, 420], wave: "square", duration: 0.18, gain: 0.045 },
+    hit: { tones: [880, 1120], wave: "triangle", duration: 0.13, gain: 0.045 },
+    win: { tones: [660, 880, 1180], wave: "sine", duration: 0.26, gain: 0.05 },
+  };
+  const preset = presets[kind] || presets.tap;
+  preset.tones.forEach((tone, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = preset.wave;
+    oscillator.frequency.setValueAtTime(tone, now + index * 0.05);
+    gain.gain.setValueAtTime(0.0001, now + index * 0.05);
+    gain.gain.exponentialRampToValueAtTime(preset.gain, now + index * 0.05 + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.05 + preset.duration);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(now + index * 0.05);
+    oscillator.stop(now + index * 0.05 + preset.duration + 0.02);
+  });
+}
+
+function burstGameFx(kind = "tap", origin = null) {
+  const layer = ensureFxLayer();
+  const point = origin || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  const total = kind === "win" ? 18 : kind === "dice" ? 12 : 9;
+  for (let index = 0; index < total; index += 1) {
+    const particle = document.createElement("span");
+    particle.className = `game-fx-particle is-${kind}`;
+    particle.style.left = `${point.x}px`;
+    particle.style.top = `${point.y}px`;
+    particle.style.setProperty("--dx", `${Math.round((Math.random() - 0.5) * (kind === "win" ? 240 : 150))}px`);
+    particle.style.setProperty("--dy", `${Math.round((Math.random() - 0.5) * (kind === "win" ? 220 : 130))}px`);
+    particle.style.setProperty("--delay", `${(Math.random() * 0.08).toFixed(3)}s`);
+    layer.append(particle);
+    window.setTimeout(() => particle.remove(), 900);
+  }
+}
+
+function feedbackKindForMove(move) {
+  if (["roll", "draw", "flip"].includes(move)) return "dice";
+  if (["spin", "reveal", "meld", "check", "play", "bid", "challenge"].includes(move)) return "hit";
+  return "tap";
+}
+
+function feedbackKindForSummary(summary) {
+  return /成功|得分|拿下|獲得|率先|命中|配到|獲勝|胡牌/.test(summary) ? "win" : "hit";
+}
+
+function triggerGameFeedback(kind = "tap", element = null) {
+  if (!state.soundEnabled && kind !== "win") return;
+  playGameSound(kind).catch(() => {});
+  burstGameFx(kind, fxAnchor(element));
+  if (element?.classList) {
+    element.classList.remove("is-fx-hit");
+    void element.offsetWidth;
+    element.classList.add("is-fx-hit");
+    window.setTimeout(() => element.classList.remove("is-fx-hit"), 360);
+  }
+}
+
+function stopGameMusic() {
+  window.clearInterval(state.musicTimer);
+  state.musicTimer = null;
+}
+
+function syncGameMusic() {
+  stopGameMusic();
+  if (!state.musicEnabled || !state.soundEnabled || state.activeView !== "games") return;
+  const sequences = [
+    [262, 392, 330],
+    [294, 440, 349],
+    [330, 494, 392],
+    [262, 392, 330],
+  ];
+  const loop = async () => {
+    const context = await ensureFxAudioContext();
+    if (!context) return;
+    const tones = sequences[state.musicStep % sequences.length];
+    state.musicStep += 1;
+    const now = context.currentTime;
+    tones.forEach((tone, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(tone, now + index * 0.08);
+      gain.gain.setValueAtTime(0.0001, now + index * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.012, now + index * 0.08 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.08 + 0.28);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(now + index * 0.08);
+      oscillator.stop(now + index * 0.08 + 0.32);
+    });
+  };
+  loop().catch(() => {});
+  state.musicTimer = window.setInterval(() => loop().catch(() => {}), 2600);
+}
+
 function saveAppState() {
   const snapshot = {
     userProfile,
@@ -599,6 +739,8 @@ function saveAppState() {
       waitlistCount: state.waitlistCount,
       sessionId: state.sessionId,
       superLikes: state.superLikes,
+      soundEnabled: state.soundEnabled,
+      musicEnabled: state.musicEnabled,
       sensitiveFilter: state.sensitiveFilter,
       slowMode: state.slowMode,
       blockedCount: state.blockedCount,
@@ -1030,6 +1172,7 @@ function loadSavedState() {
 function setView(view) {
   state.activeView = view;
   if (view !== "games") stopGameSyncLoop();
+  syncGameMusic();
   $$(".nav-item").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === view);
   });
@@ -1264,6 +1407,7 @@ function stopVoicePresenceLoop() {
 function applyRealtimeData(data) {
   if (!data?.ok) return;
   const previousGameUpdatedAt = state.liveGame?.updatedAt || "";
+  const previousGameSummary = state.liveGame?.lastSummary || "";
   state.liveStatus = "connected";
   state.liveParticipants = Array.isArray(data.participants) ? data.participants : [];
   state.liveMessages = Array.isArray(data.messages) ? data.messages : [];
@@ -1282,6 +1426,10 @@ function applyRealtimeData(data) {
   const isEditingAnswer = document.activeElement?.id === "partyAnswerInput";
   const gameChanged = previousGameUpdatedAt !== (state.liveGame?.updatedAt || "");
   if (state.activeView === "games" && gameChanged && !state.drawingActive && !isEditingAnswer) renderPartyGames();
+  if (previousGameUpdatedAt && gameChanged) {
+    const nextSummary = state.liveGame?.lastSummary || "";
+    if (nextSummary && nextSummary !== previousGameSummary) triggerGameFeedback(feedbackKindForSummary(nextSummary));
+  }
   if (state.activeView === "chat") renderChat();
   if (state.activeView === "growth") renderGrowth();
 }
@@ -1326,11 +1474,13 @@ async function sendLiveMessage(text) {
 }
 
 async function inviteLiveMatch(toSessionId = "") {
+  triggerGameFeedback("hit");
   await syncRealtime("match-invite", { toSessionId });
   showToast(toSessionId ? "已送出配對邀請" : "已發出隨機配對邀請");
 }
 
 async function acceptLiveMatch(matchId) {
+  triggerGameFeedback("win");
   await syncRealtime("match-accept", { matchId });
   showToast("已接受配對邀請，可以開始一對一聊天");
   state.activeConversationId = `match:${matchId}`;
@@ -1340,6 +1490,7 @@ async function acceptLiveMatch(matchId) {
 async function sendGameAnswer(answer) {
   const value = answer.trim();
   if (!value) return;
+  triggerGameFeedback("send");
   await syncRealtime("game-answer", { answer: value });
 }
 
@@ -1351,6 +1502,7 @@ async function selectPartyGame(mode) {
   if (!partyGameCatalog[mode]) return;
   await syncRealtime("game-select", { mode });
   showToast(`已切換到「${partyGameCatalog[mode].name}」`);
+  syncGameMusic();
 }
 
 async function submitPartyAnswer(answer) {
@@ -2172,7 +2324,11 @@ function renderPartyGames() {
   arena.innerHTML = `
     <div class="party-game-intro">
       <div><h3>真人多人免費賭場</h3><p>不用儲值，直接用同一個房號讓不同裝置、不同網路的玩家一起玩牌、玩骰子、玩麻將，玩完直接聊。</p></div>
-      <span class="party-room-chip"><i data-lucide="users-round"></i>${escapeHtml(state.currentRoomId)} · ${state.liveParticipants.length} 人</span>
+      <div class="party-intro-tools">
+        <span class="party-room-chip"><i data-lucide="users-round"></i>${escapeHtml(state.currentRoomId)} · ${state.liveParticipants.length} 人</span>
+        <button class="ghost-action" type="button" id="toggleSoundBtn"><i data-lucide="${state.soundEnabled ? "volume-2" : "volume-x"}"></i><span>${state.soundEnabled ? "音效開" : "音效關"}</span></button>
+        <button class="ghost-action" type="button" id="toggleMusicBtn"><i data-lucide="${state.musicEnabled ? "music-4" : "music-2"}"></i><span>${state.musicEnabled ? "音樂開" : "音樂關"}</span></button>
+      </div>
     </div>
     <div class="party-game-library">
       ${Object.entries(partyGameCatalog)
@@ -2195,10 +2351,17 @@ function renderPartyGames() {
     </div>
   `;
 
-  $$('[data-party-mode]').forEach((button) => button.addEventListener("click", () => selectPartyGame(button.dataset.partyMode)));
-  $$('[data-party-answer]').forEach((button) => button.addEventListener("click", () => submitPartyAnswer(button.dataset.partyAnswer)));
+  $$('[data-party-mode]').forEach((button) => button.addEventListener("click", () => {
+    triggerGameFeedback("mode", button);
+    selectPartyGame(button.dataset.partyMode);
+  }));
+  $$('[data-party-answer]').forEach((button) => button.addEventListener("click", () => {
+    triggerGameFeedback("send", button);
+    submitPartyAnswer(button.dataset.partyAnswer);
+  }));
   $$("[data-game-move]").forEach((button) =>
     button.addEventListener("click", () => {
+      triggerGameFeedback(feedbackKindForMove(button.dataset.gameMove), button);
       const extra = {};
       if (button.dataset.card) extra.card = button.dataset.card;
       if (button.dataset.bet) extra.bet = button.dataset.bet;
@@ -2211,22 +2374,44 @@ function renderPartyGames() {
   $("#partyAnswerForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const input = $("#partyAnswerInput");
+    triggerGameFeedback("send", input);
     submitPartyAnswer(input.value);
     input.value = "";
   });
-  $("#nextPartyRoundBtn")?.addEventListener("click", nextLiveGameRound);
+  $("#nextPartyRoundBtn")?.addEventListener("click", (event) => {
+    triggerGameFeedback("mode", event.currentTarget);
+    nextLiveGameRound();
+  });
   $("#sparkTarget")?.addEventListener("click", (event) => {
     event.currentTarget.disabled = true;
+    triggerGameFeedback("hit", event.currentTarget);
     syncRealtime("game-tap", { targetId: event.currentTarget.dataset.targetId });
   });
   $("#orbitTarget")?.addEventListener("click", (event) => {
     event.currentTarget.dataset.pending = "true";
     event.currentTarget.disabled = true;
+    triggerGameFeedback("hit", event.currentTarget);
     syncRealtime("game-tap", { targetId: event.currentTarget.dataset.targetId });
+  });
+  $("#toggleSoundBtn")?.addEventListener("click", (event) => {
+    state.soundEnabled = !state.soundEnabled;
+    if (!state.soundEnabled) stopGameMusic();
+    else syncGameMusic();
+    scheduleSave();
+    triggerGameFeedback("tap", event.currentTarget);
+    renderPartyGames();
+  });
+  $("#toggleMusicBtn")?.addEventListener("click", (event) => {
+    state.musicEnabled = !state.musicEnabled;
+    syncGameMusic();
+    scheduleSave();
+    triggerGameFeedback("tap", event.currentTarget);
+    renderPartyGames();
   });
   if (mode === "reaction") wireReactionGame(game);
   if (mode === "doodle") wireDoodleBoard(game);
   if (mode === "orbit") wireOrbitGame(game);
+  syncGameMusic();
   syncIcons();
 }
 
@@ -2594,6 +2779,7 @@ function renderMultiplayerPanel() {
   $("#liveMessageForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const input = $("#liveMessageInput");
+    triggerGameFeedback("send", input);
     sendLiveMessage(input.value);
     input.value = "";
   });
@@ -3651,6 +3837,7 @@ async function sendMessage(text) {
   const active = liveConversationItems().find((conversation) => conversation.id === state.activeConversationId);
   const value = String(text || "").trim();
   if (!active || !value) return;
+  triggerGameFeedback("send");
   if (active.type === "room") {
     await sendLiveMessage(value);
     return;

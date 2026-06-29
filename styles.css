@@ -1640,6 +1640,14 @@ textarea {
   font-weight: 700;
 }
 
+.party-intro-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .vibe-option:hover,
 .vibe-option.is-selected {
   border-color: var(--coral);
@@ -3295,6 +3303,71 @@ textarea {
 .toast.is-visible {
   opacity: 1;
   transform: translateY(0);
+}
+
+.game-fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.game-fx-particle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.4);
+  animation: game-fx-burst 820ms ease-out forwards;
+  animation-delay: var(--delay, 0s);
+}
+
+.game-fx-particle.is-tap {
+  background: rgba(8, 127, 123, 0.85);
+}
+
+.game-fx-particle.is-send {
+  background: rgba(102, 80, 164, 0.82);
+}
+
+.game-fx-particle.is-mode {
+  background: rgba(199, 145, 37, 0.82);
+}
+
+.game-fx-particle.is-dice {
+  background: rgba(245, 111, 99, 0.88);
+}
+
+.game-fx-particle.is-hit {
+  background: rgba(8, 127, 123, 0.9);
+}
+
+.game-fx-particle.is-win {
+  background: linear-gradient(135deg, #f56f63, #f0c84b);
+}
+
+@keyframes game-fx-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1);
+  }
+}
+
+.is-fx-hit {
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.78),
+    0 0 0 5px rgba(8, 127, 123, 0.2);
 }
 
 @media (max-width: 1120px) {
