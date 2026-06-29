@@ -1484,7 +1484,7 @@ textarea {
 
 .party-game-library {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -1867,6 +1867,189 @@ textarea {
   height: 54px;
   background: var(--teal);
   box-shadow: 0 8px 24px rgba(8, 127, 123, 0.28);
+}
+
+.party-summary {
+  margin: 0 0 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.game-meta-grid,
+.hand-counts,
+.action-grid,
+.roulette-wheel,
+.monopoly-board,
+.memory-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.game-meta-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-top: 14px;
+}
+
+.game-stat,
+.hand-counts article,
+.monopoly-tile {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.game-stat span,
+.hand-counts span,
+.monopoly-tile span,
+.monopoly-tile small {
+  display: block;
+  color: var(--muted);
+}
+
+.game-stat strong,
+.monopoly-tile strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.private-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.shared-hand + .shared-hand {
+  margin-top: 14px;
+}
+
+.shared-hand h4 {
+  margin: 14px 0 0;
+  font-size: 14px;
+}
+
+.card-chip,
+.dice-chip,
+.tile-chip,
+.token-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.dice-chip {
+  border-style: dashed;
+}
+
+.tile-chip {
+  min-width: 48px;
+  background: #fffdf7;
+}
+
+.card-chip.is-warm,
+.tile-chip.is-warm,
+.token-action.is-warm {
+  color: #c94b4b;
+}
+
+.card-chip.is-teal,
+.tile-chip.is-teal,
+.token-action.is-teal {
+  color: var(--teal);
+}
+
+.token-action {
+  cursor: pointer;
+}
+
+.token-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.action-grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-top: 14px;
+}
+
+.hand-counts {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  margin-top: 14px;
+}
+
+.roulette-wheel {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.roulette-pocket {
+  min-height: 54px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.roulette-pocket.is-red {
+  background: #fff1f1;
+  color: #bc3b46;
+}
+
+.roulette-pocket.is-black {
+  background: #1f2427;
+  color: #ffffff;
+}
+
+.roulette-pocket.is-selected {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+
+.monopoly-board {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.monopoly-tile.is-current {
+  border-color: var(--teal);
+  background: #f1faf7;
+}
+
+.memory-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.memory-tile {
+  min-height: 82px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.memory-tile.is-face-up {
+  background: #ffffff;
+}
+
+.memory-tile.is-matched {
+  border-color: var(--teal);
+  color: var(--teal);
 }
 
 .party-empty {
@@ -3339,6 +3522,12 @@ textarea {
   .vibe-options,
   .party-answer-form {
     grid-template-columns: 1fr;
+  }
+
+  .roulette-wheel,
+  .monopoly-board,
+  .memory-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .story-entry {

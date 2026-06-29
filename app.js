@@ -219,6 +219,76 @@ const partyGameCatalog = {
     icon: "disc-3",
     description: "光點會自己亂跳，房內所有人都能搶分衝榜。",
   },
+  liar: {
+    name: "吹牛骰",
+    icon: "dice-5",
+    description: "多人房輪流喊骰，抓包成功就拿分。",
+  },
+  highroll: {
+    name: "骰子比大",
+    icon: "dices",
+    description: "免費擲兩顆骰，總點數最大的人領先。",
+  },
+  rushdice: {
+    name: "搶點骰",
+    icon: "target",
+    description: "先擲出目標總點數的人立刻得分。",
+  },
+  highcard: {
+    name: "比大",
+    icon: "badge-plus",
+    description: "每人抽一張牌，不下注也能比牌面大小。",
+  },
+  oldmaid: {
+    name: "抽鬼牌",
+    icon: "ghost",
+    description: "整理手牌避開鬼牌，適合多人輕鬆玩。",
+  },
+  texas: {
+    name: "德州撲克簡化版",
+    icon: "club",
+    description: "共享公共牌，免費比一次最佳牌型。",
+  },
+  rummy: {
+    name: "Rummy 接龍",
+    icon: "layers-3",
+    description: "七張牌配順子與刻子，比誰整理得漂亮。",
+  },
+  mahjong: {
+    name: "麻將配牌",
+    icon: "gallery-vertical-end",
+    description: "免費發牌湊面子與將眼，像麻將暖桌版。",
+  },
+  roulette: {
+    name: "幸運輪盤",
+    icon: "circle-dot",
+    description: "押紅黑單雙或區段，全房一起開盤。",
+  },
+  slots: {
+    name: "777 老虎機",
+    icon: "cherry",
+    description: "不用儲值就能拉霸，連線直接加分。",
+  },
+  uno: {
+    name: "UNO 風格",
+    icon: "paintbrush-vertical",
+    description: "依顏色和數字出牌，先出完就贏。",
+  },
+  monopoly: {
+    name: "輕量大富翁",
+    icon: "map",
+    description: "擲骰前進，踩格拿代幣或遇到小事件。",
+  },
+  memory: {
+    name: "記憶配對",
+    icon: "brain",
+    description: "輪流翻牌配對，最適合多人輪著玩。",
+  },
+  quiz: {
+    name: "派對問答",
+    icon: "badge-help",
+    description: "房內同步答題，看誰最先答對。",
+  },
 };
 
 const userProfile = {
@@ -1234,9 +1304,12 @@ async function syncRealtime(action = "heartbeat", extra = {}) {
 async function fetchRealtimeSnapshot() {
   if (!state.connectionReady) return;
   try {
-    const response = await fetch(apiUrl(`/api/realtime?roomId=${encodeURIComponent(state.currentRoomId)}`), {
+    const response = await fetch(
+      apiUrl(`/api/realtime?roomId=${encodeURIComponent(state.currentRoomId)}&sessionId=${encodeURIComponent(ensureSessionId())}`),
+      {
       headers: { accept: "application/json" },
-    });
+      },
+    );
     if (!response.ok) throw new Error("Realtime API unavailable");
     applyRealtimeData(await response.json());
   } catch {
@@ -1283,6 +1356,10 @@ async function submitPartyAnswer(answer) {
   await syncRealtime("game-answer", { answer: value });
 }
 
+async function submitGameMove(move, extra = {}) {
+  await syncRealtime("game-action", { move, ...extra });
+}
+
 function startGameSyncLoop() {
   window.clearInterval(state.gameSyncTimer);
   fetchRealtimeSnapshot();
@@ -1302,6 +1379,71 @@ function currentGameAnswer(game) {
 
 function currentRoundAnswers(game) {
   return (game.answers || []).filter((answer) => answer.round === game.round);
+}
+
+function participantNameForSession(sessionId) {
+  return state.liveParticipants.find((participant) => participant.sessionId === sessionId)?.name || "玩家";
+}
+
+function activeTurnName(game) {
+  const sessionId = game.turnOrder?.[Number(game.turnIndex || 0)];
+  return sessionId ? participantNameForSession(sessionId) : "等待玩家";
+}
+
+function usesScoreboard(game) {
+  return new Set(["reaction", "spark", "orbit", "liar", "highroll", "rushdice", "highcard", "oldmaid", "texas", "rummy", "mahjong", "roulette", "slots", "uno", "monopoly", "memory", "quiz"]).has(game.mode);
+}
+
+function handItemLabel(item) {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  if (typeof item === "object" && item.label) return item.label;
+  return String(item);
+}
+
+function handItemTone(item) {
+  const label = handItemLabel(item);
+  return /[HD]|萬/.test(label) ? "warm" : /條/.test(label) ? "teal" : "";
+}
+
+function gameAnswerBySession(game, sessionId = state.sessionId) {
+  return currentRoundAnswers(game).find((answer) => answer.sessionId === sessionId);
+}
+
+function renderTokenList(items, className = "card-chip") {
+  return items
+    .map((item) => `<span class="${className} ${handItemTone(item) ? `is-${handItemTone(item)}` : ""}">${escapeHtml(handItemLabel(item))}</span>`)
+    .join("");
+}
+
+function renderHandCounts(game) {
+  const counts = Object.entries(game.handCounts || {});
+  if (!counts.length) return "";
+  return `
+    <div class="hand-counts">
+      ${counts
+        .map(
+          ([sessionId, count]) => `
+            <article>
+              <strong>${escapeHtml(participantNameForSession(sessionId))}</strong>
+              <span>${Number(count)} 張</span>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function liarBidOptions(game) {
+  const start = game.bid ? Number(game.bid.count) * 6 + Number(game.bid.face) : 0;
+  return Array.from({ length: 8 }, (_, index) => {
+    const value = start + index + 1;
+    return {
+      count: Math.floor((value - 1) / 6) + 1,
+      face: ((value - 1) % 6) + 1,
+    };
+  });
 }
 
 function partyAnswersHtml(game) {
@@ -1491,6 +1633,365 @@ function renderOrbitGame(game) {
   `;
 }
 
+function renderGameMetaGrid(items) {
+  return `
+    <div class="game-meta-grid">
+      ${items
+        .map(
+          (item) => `
+            <article class="game-stat">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value)}</strong>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderLiarGame(game) {
+  const mine = Array.isArray(game.myHand) ? game.myHand : [];
+  const isMyTurn = game.turnOrder?.[Number(game.turnIndex || 0)] === state.sessionId;
+  const bidLabel = game.bid ? `${Number(game.bid.count)} 顆 ${Number(game.bid.face)} 點` : "尚未叫骰";
+  const revealed = Object.entries(game.revealedHands || {});
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "輪到", value: activeTurnName(game) },
+      { label: "目前叫骰", value: bidLabel },
+      { label: "你的骰子", value: `${mine.length} 顆` },
+    ])}
+    <div class="private-hand">${mine.length ? renderTokenList(mine.map((value) => `${value}點`), "dice-chip") : `<p class="party-empty">等待本局骰子同步。</p>`}</div>
+    <div class="action-grid">
+      ${liarBidOptions(game)
+        .map(
+          (option) => `
+            <button class="ghost-action stretch" type="button" data-game-move="bid" data-count="${option.count}" data-face="${option.face}" ${isMyTurn ? "" : "disabled"}>
+              <span>${option.count} 顆 ${option.face} 點</span>
+            </button>
+          `,
+        )
+        .join("")}
+      <button class="primary-action stretch" type="button" data-game-move="challenge" ${isMyTurn && game.bid ? "" : "disabled"}>
+        <i data-lucide="siren"></i><span>抓包</span>
+      </button>
+    </div>
+    ${renderHandCounts(game)}
+    ${
+      revealed.length
+        ? `
+          <div class="party-answer-list">
+            ${revealed
+              .map(
+                ([sessionId, dice]) => `
+                  <article>
+                    <strong>${escapeHtml(participantNameForSession(sessionId))}</strong>
+                    <span>${escapeHtml((dice || []).map((value) => `${value}點`).join(" / "))}</span>
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+        `
+        : ""
+    }
+  `;
+}
+
+function renderHighRollGame(game) {
+  const mine = gameAnswerBySession(game)?.answer || "還沒擲骰";
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "你的結果", value: mine },
+      { label: "目前在線", value: `${state.liveParticipants.length} 人` },
+    ])}
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="roll"><i data-lucide="dices"></i><span>擲骰</span></button>
+    </div>
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderRushDiceGame(game) {
+  const mine = gameAnswerBySession(game)?.answer || "還沒出手";
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "目標總點數", value: `${Number(game.targetTotal || 0)} 點` },
+      { label: "你的上一擲", value: mine },
+    ])}
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="roll"><i data-lucide="target"></i><span>擲骰搶點</span></button>
+    </div>
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderHighCardGame(game) {
+  const mine = Array.isArray(game.myHand) ? game.myHand : [];
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "你的牌", value: mine.length ? handItemLabel(mine[0]) : "尚未抽牌" },
+      { label: "房內人數", value: `${state.liveParticipants.length} 人` },
+    ])}
+    <div class="private-hand">${mine.length ? renderTokenList(mine, "card-chip") : `<p class="party-empty">按下抽牌後才會看到你的手牌。</p>`}</div>
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="draw" ${mine.length ? "disabled" : ""}>
+        <i data-lucide="badge-plus"></i><span>抽一張牌</span>
+      </button>
+    </div>
+    ${renderHandCounts(game)}
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderOldMaidGame(game) {
+  const mine = Array.isArray(game.myHand) ? game.myHand : [];
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "你的手牌", value: `${mine.length} 張` },
+      { label: "目標", value: "別讓鬼牌留在手上" },
+    ])}
+    <div class="private-hand">${mine.length ? renderTokenList(mine, "card-chip") : `<p class="party-empty">等待手牌同步。</p>`}</div>
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="reveal"><i data-lucide="eye"></i><span>整理並揭曉</span></button>
+    </div>
+    ${renderHandCounts(game)}
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderTexasGame(game) {
+  const mine = Array.isArray(game.myHand) ? game.myHand : [];
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "公共牌", value: `${(game.communityCards || []).length} 張` },
+      { label: "你的手牌", value: `${mine.length} 張` },
+    ])}
+    <div class="shared-hand">
+      <h4>公共牌</h4>
+      <div class="private-hand">${renderTokenList(game.communityCards || [], "card-chip")}</div>
+    </div>
+    <div class="shared-hand">
+      <h4>你的兩張牌</h4>
+      <div class="private-hand">${mine.length ? renderTokenList(mine, "card-chip") : `<p class="party-empty">等待發牌。</p>`}</div>
+    </div>
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="reveal"><i data-lucide="club"></i><span>比牌型</span></button>
+    </div>
+    ${renderHandCounts(game)}
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderRummyGame(game) {
+  const mine = Array.isArray(game.myHand) ? game.myHand : [];
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "你的手牌", value: `${mine.length} 張` },
+      { label: "玩法", value: "找順子與刻子" },
+    ])}
+    <div class="private-hand">${mine.length ? renderTokenList(mine, "card-chip") : `<p class="party-empty">等待牌組同步。</p>`}</div>
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="meld"><i data-lucide="layers-3"></i><span>整理牌型</span></button>
+    </div>
+    ${renderHandCounts(game)}
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderMahjongGame(game) {
+  const mine = Array.isArray(game.myHand) ? game.myHand : [];
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "你的手牌", value: `${mine.length} 張` },
+      { label: "目標", value: "湊面子與將眼" },
+    ])}
+    <div class="private-hand">${mine.length ? renderTokenList(mine, "tile-chip") : `<p class="party-empty">等待麻將牌同步。</p>`}</div>
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="check"><i data-lucide="gallery-vertical-end"></i><span>檢查牌型</span></button>
+    </div>
+    ${renderHandCounts(game)}
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderRouletteGame(game) {
+  const myBet = game.bets?.[state.sessionId] || "";
+  const result = game.spinResult;
+  const options = [
+    ["red", "紅"],
+    ["black", "黑"],
+    ["odd", "單"],
+    ["even", "雙"],
+    ["low", "1-18"],
+    ["high", "19-36"],
+    ["dozen-1", "1-12"],
+    ["dozen-2", "13-24"],
+    ["dozen-3", "25-36"],
+  ];
+  const resultText = result ? `${Number(result.number)} · ${result.color === "green" ? "綠" : result.color === "red" ? "紅" : "黑"}` : "尚未開盤";
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "你的下注", value: myBet ? myBet : "尚未下注" },
+      { label: "上一顆球", value: resultText },
+    ])}
+    <div class="roulette-wheel">
+      ${options
+        .map(
+          ([bet, label]) => `
+            <button class="roulette-pocket ${bet === myBet ? "is-selected" : ""} ${bet === "red" ? "is-red" : bet === "black" ? "is-black" : ""}" type="button" data-game-move="bet" data-bet="${bet}">
+              ${label}
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="spin"><i data-lucide="circle-dot"></i><span>開盤</span></button>
+    </div>
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderSlotsGame(game) {
+  const mine = gameAnswerBySession(game)?.answer || "還沒拉霸";
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "你的上一輪", value: mine },
+      { label: "玩法", value: "三軸免費拉霸" },
+    ])}
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="spin"><i data-lucide="cherry"></i><span>拉霸一次</span></button>
+    </div>
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderUnoGame(game) {
+  const mine = Array.isArray(game.myHand) ? game.myHand : [];
+  const isMyTurn = game.turnOrder?.[Number(game.turnIndex || 0)] === state.sessionId;
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "輪到", value: activeTurnName(game) },
+      { label: "桌面牌", value: handItemLabel(game.topCard) || "等待翻牌" },
+      { label: "你的手牌", value: `${mine.length} 張` },
+    ])}
+    <div class="private-hand">
+      ${
+        mine.length
+          ? mine
+              .map(
+                (card) => `
+                  <button class="token-action card-chip ${handItemTone(card) ? `is-${handItemTone(card)}` : ""}" type="button" data-game-move="play" data-card="${escapeHtml(handItemLabel(card))}" ${isMyTurn ? "" : "disabled"}>
+                    ${escapeHtml(handItemLabel(card))}
+                  </button>
+                `,
+              )
+              .join("")
+          : `<p class="party-empty">你這局沒有手牌。</p>`
+      }
+    </div>
+    <div class="action-grid">
+      <button class="ghost-action stretch" type="button" data-game-move="draw" ${isMyTurn ? "" : "disabled"}>
+        <i data-lucide="plus"></i><span>抽一張</span>
+      </button>
+    </div>
+    ${renderHandCounts(game)}
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderMonopolyGame(game) {
+  const myPosition = Number(game.positions?.[state.sessionId] || 0);
+  const isMyTurn = game.turnOrder?.[Number(game.turnIndex || 0)] === state.sessionId;
+  const tiles = Array.isArray(game.tileMeta) ? game.tileMeta : [];
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "輪到", value: activeTurnName(game) },
+      { label: "你的籌碼", value: `${Number(game.coins?.[state.sessionId] || 12)} 枚` },
+      { label: "目前位置", value: tiles[myPosition]?.name || "Start" },
+    ])}
+    <div class="monopoly-board">
+      ${tiles
+        .map((tile, index) => {
+          const occupants = state.liveParticipants
+            .filter((participant) => Number(game.positions?.[participant.sessionId] || 0) === index)
+            .map((participant) => participant.name.slice(0, 1))
+            .join(" ");
+          return `
+            <article class="monopoly-tile ${index === myPosition ? "is-current" : ""}">
+              <strong>${escapeHtml(tile.name)}</strong>
+              <span>${Number(tile.coins) >= 0 ? `+${Number(tile.coins)}` : Number(tile.coins)}</span>
+              <small>${escapeHtml(occupants || "空位")}</small>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+    <div class="action-grid">
+      <button class="primary-action stretch" type="button" data-game-move="roll" ${isMyTurn ? "" : "disabled"}>
+        <i data-lucide="dice-3"></i><span>擲骰前進</span>
+      </button>
+    </div>
+  `;
+}
+
+function renderMemoryGame(game) {
+  const isMyTurn = game.turnOrder?.[Number(game.turnIndex || 0)] === state.sessionId;
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    ${renderGameMetaGrid([
+      { label: "輪到", value: activeTurnName(game) },
+      { label: "已配對", value: `${(game.matched || []).filter(Boolean).length / 2} 組` },
+    ])}
+    <div class="memory-grid">
+      ${(game.board || [])
+        .map((symbol, index) => {
+          const faceUp = Boolean(game.matched?.[index]) || (game.flipped || []).includes(index);
+          return `
+            <button class="memory-tile ${faceUp ? "is-face-up" : ""} ${game.matched?.[index] ? "is-matched" : ""}" type="button" data-game-move="flip" data-index="${index}" ${isMyTurn && !faceUp ? "" : "disabled"}>
+              <span>${faceUp ? escapeHtml(symbol) : "?"}</span>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderQuizGame(game) {
+  const myAnswer = gameAnswerBySession(game)?.answer || "";
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    <div class="vibe-options">
+      ${(game.options || [])
+        .map(
+          (option) => `
+            <button class="vibe-option ${option === myAnswer ? "is-selected" : ""}" type="button" data-party-answer="${escapeHtml(option)}">
+              <strong>${escapeHtml(option)}</strong>
+              <span>${option === myAnswer ? "你已選擇" : "送出答案"}</span>
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+    <p class="reaction-result">${myAnswer ? `你這題選了「${escapeHtml(myAnswer)}」` : "答對的人會留下分數，答錯也能繼續聊天。"} </p>
+    ${partyAnswersHtml(game)}
+  `;
+}
+
 function renderPartyScoreboard(game) {
   const scores = [...(game.scores || [])].sort((a, b) =>
     game.mode === "reaction" ? Number(a.score) - Number(b.score) : Number(b.score) - Number(a.score),
@@ -1504,18 +2005,22 @@ function renderPartyScoreboard(game) {
         ? "搶點排行榜"
         : game.mode === "orbit"
           ? "追光排行榜"
-          : game.mode === "story"
+          : usesScoreboard(game)
+            ? "房內戰績"
+            : game.mode === "story"
             ? "接龍進度"
             : "本局進度";
+  const unit = game.mode === "reaction" ? "ms" : ["roulette", "slots", "monopoly"].includes(game.mode) ? "籌碼" : "分";
   return `
     <aside class="party-scoreboard">
       <div class="panel-title"><i data-lucide="trophy"></i><h3>${title}</h3></div>
+      ${game.lastSummary ? `<p class="party-summary">${escapeHtml(game.lastSummary)}</p>` : ""}
       <div class="party-score-list">
         ${
-          ["reaction", "spark", "orbit"].includes(game.mode) && scores.length
+          usesScoreboard(game) && scores.length
             ? scores
                 .map(
-                  (score, index) => `<article><strong>${index + 1}. ${escapeHtml(score.name)}</strong><span>${Number(score.score)} ${game.mode === "reaction" ? "ms" : "分"}</span></article>`,
+                  (score, index) => `<article><strong>${index + 1}. ${escapeHtml(score.name)}</strong><span>${Number(score.score)} ${unit}</span></article>`,
                 )
                 .join("")
             : state.liveParticipants.length
@@ -1559,11 +2064,25 @@ function renderPartyGames() {
     doodle: renderDoodleGame,
     spark: renderSparkGame,
     orbit: renderOrbitGame,
+    liar: renderLiarGame,
+    highroll: renderHighRollGame,
+    rushdice: renderRushDiceGame,
+    highcard: renderHighCardGame,
+    oldmaid: renderOldMaidGame,
+    texas: renderTexasGame,
+    rummy: renderRummyGame,
+    mahjong: renderMahjongGame,
+    roulette: renderRouletteGame,
+    slots: renderSlotsGame,
+    uno: renderUnoGame,
+    monopoly: renderMonopolyGame,
+    memory: renderMemoryGame,
+    quiz: renderQuizGame,
   }[mode](game);
 
   arena.innerHTML = `
     <div class="party-game-intro">
-      <div><h3>和真人一起玩，玩完直接聊</h3><p>所有操作都同步到目前房間，適合語音房暖場、配對後破冰與多人同玩。</p></div>
+      <div><h3>真人多人免費賭場</h3><p>不用儲值，直接用同一個房號讓不同裝置、不同網路的玩家一起玩牌、玩骰子、玩麻將，玩完直接聊。</p></div>
       <span class="party-room-chip"><i data-lucide="users-round"></i>${escapeHtml(state.currentRoomId)} · ${state.liveParticipants.length} 人</span>
     </div>
     <div class="party-game-library">
@@ -1589,6 +2108,17 @@ function renderPartyGames() {
 
   $$('[data-party-mode]').forEach((button) => button.addEventListener("click", () => selectPartyGame(button.dataset.partyMode)));
   $$('[data-party-answer]').forEach((button) => button.addEventListener("click", () => submitPartyAnswer(button.dataset.partyAnswer)));
+  $$("[data-game-move]").forEach((button) =>
+    button.addEventListener("click", () => {
+      const extra = {};
+      if (button.dataset.card) extra.card = button.dataset.card;
+      if (button.dataset.bet) extra.bet = button.dataset.bet;
+      if (button.dataset.count) extra.count = Number(button.dataset.count);
+      if (button.dataset.face) extra.face = Number(button.dataset.face);
+      if (button.dataset.index !== undefined) extra.index = Number(button.dataset.index);
+      submitGameMove(button.dataset.gameMove, extra);
+    }),
+  );
   $("#partyAnswerForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const input = $("#partyAnswerInput");
@@ -1928,11 +2458,11 @@ function renderMultiplayerPanel() {
       <section class="live-game-card">
         <div class="sub-panel-title">
           <i data-lucide="gamepad-2"></i>
-          <h4>${partyGameCatalog[game.mode]?.name || "多人破冰遊戲"} · 第 ${Number(game.round || 1)} 局</h4>
+          <h4>${partyGameCatalog[game.mode]?.name || "多人免費賭場"} · 第 ${Number(game.round || 1)} 局</h4>
         </div>
         <p class="live-game-prompt">${escapeHtml(game.prompt)}</p>
         <button class="primary-action stretch" type="button" id="openPartyGamesBtn">
-          <i data-lucide="play"></i><span>進入真人共玩遊戲廳</span>
+          <i data-lucide="play"></i><span>進入多人免費賭場</span>
         </button>
       </section>
     </div>
