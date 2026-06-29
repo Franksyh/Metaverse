@@ -36,6 +36,10 @@
             <i data-lucide="user-round"></i>
             <span>檔案</span>
           </button>
+          <button class="nav-item" data-view="games">
+            <i data-lucide="gamepad-2"></i>
+            <span>共玩</span>
+          </button>
           <button class="nav-item" data-view="safety">
             <i data-lucide="shield-check"></i>
             <span>安全</span>
@@ -267,45 +271,15 @@
         <section class="view" id="games-view" aria-labelledby="gamesTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Ice Breakers</p>
-              <h2 id="gamesTitle">破冰遊戲</h2>
+              <p class="eyebrow">Play Together</p>
+              <h2 id="gamesTitle">真人共玩遊戲廳</h2>
             </div>
-            <button class="ghost-action" type="button" id="resetGamesBtn">
-              <i data-lucide="rotate-ccw"></i>
-              <span>重開遊戲</span>
+            <button class="ghost-action" type="button" id="backToLiveRoomBtn">
+              <i data-lucide="radio"></i>
+              <span>返回真人房</span>
             </button>
           </div>
-
-          <div class="games-grid">
-            <section class="game-panel">
-              <div class="panel-title">
-                <i data-lucide="badge-question-mark"></i>
-                <h3>真心話轉盤</h3>
-              </div>
-              <div class="prompt-card" id="promptCard"></div>
-              <button class="primary-action stretch" type="button" id="spinPromptBtn">
-                <i data-lucide="shuffle"></i>
-                <span>抽下一題</span>
-              </button>
-            </section>
-
-            <section class="game-panel">
-              <div class="panel-title">
-                <i data-lucide="heart-handshake"></i>
-                <h3>默契快問</h3>
-              </div>
-              <div class="quiz-box" id="quizBox"></div>
-            </section>
-
-            <section class="game-panel wide">
-              <div class="panel-title">
-                <i data-lucide="copy-check"></i>
-                <h3>興趣翻牌</h3>
-              </div>
-              <div class="memory-status" id="memoryStatus"></div>
-              <div class="memory-board" id="memoryBoard"></div>
-            </section>
-          </div>
+          <section class="party-game-shell" id="partyGameArena" aria-live="polite"></section>
         </section>
 
         <section class="view" id="ai-view" aria-labelledby="aiTitle">
@@ -403,36 +377,39 @@
       <form class="connection-card" id="connectionForm">
         <div class="connection-heading">
           <span class="eyebrow">真人多人連線</span>
-          <h2 id="connectionTitle">輸入 IP，加入同一個房間</h2>
-          <p>每位真人使用者都要輸入暱稱、相同伺服器網址與相同房間碼。</p>
+          <h2 id="connectionTitle">輸入房號，跨網路連線</h2>
+          <p>不同地點、不同 IP 的電腦開啟公開網站後，輸入相同房號即可進入同一房間。</p>
         </div>
         <label class="connection-field">
           <span>你的真人暱稱</span>
           <input id="connectionNameInput" type="text" autocomplete="nickname" maxlength="40" placeholder="例如：Frank" required />
         </label>
         <label class="connection-field">
-          <span>伺服器 IP 或公開網址</span>
-          <input id="connectionIpInput" type="text" inputmode="url" autocomplete="url" placeholder="http://192.168.66.53:5173" required />
+          <span>共同房號</span>
+          <input id="connectionRoomInput" type="text" autocomplete="off" maxlength="80" placeholder="例如：frank-room" required />
         </label>
-        <label class="connection-field">
-          <span>房間代碼</span>
-          <input id="connectionRoomInput" type="text" autocomplete="off" maxlength="80" placeholder="late-night" required />
-        </label>
-        <div class="connection-presets">
-          <button class="ghost-action" type="button" data-connection-preset="current">
-            <i data-lucide="wifi"></i>
-            <span>目前網址</span>
-          </button>
-          <button class="ghost-action" type="button" data-connection-preset="public">
-            <i data-lucide="globe-2"></i>
-            <span>跨網路公開伺服器</span>
-          </button>
-        </div>
+        <details class="connection-advanced">
+          <summary>進階：使用自訂伺服器 IP</summary>
+          <label class="connection-field">
+            <span>伺服器 IP 或公開網址</span>
+            <input id="connectionIpInput" type="text" inputmode="url" autocomplete="url" placeholder="http://192.168.66.53:5173" />
+          </label>
+          <div class="connection-presets">
+            <button class="ghost-action" type="button" data-connection-preset="current">
+              <i data-lucide="wifi"></i>
+              <span>目前網址</span>
+            </button>
+            <button class="ghost-action" type="button" data-connection-preset="public">
+              <i data-lucide="globe-2"></i>
+              <span>公開伺服器</span>
+            </button>
+          </div>
+        </details>
         <p class="connection-current" id="connectionCurrentLabel">尚未連線</p>
-        <p class="connection-warning" id="connectionWarning">同 Wi-Fi 可輸入電腦的 LAN IP；不同網路請選「跨網路公開伺服器」。</p>
+        <p class="connection-warning" id="connectionWarning">跨縣市或不同網路請使用公開網站與相同房號；只有同 Wi-Fi 才需要輸入 LAN IP。</p>
         <button class="primary-action stretch" type="submit">
           <i data-lucide="log-in"></i>
-          <span>開始連線</span>
+          <span>用房號加入</span>
         </button>
       </form>
     </div>

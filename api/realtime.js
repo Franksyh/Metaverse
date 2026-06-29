@@ -12,6 +12,16 @@ const GAME_PROMPTS = [
   "你希望理想對象具備哪一個很小但很重要的習慣？",
 ];
 
+const CHEMISTRY_ROUNDS = [
+  { prompt: "第一次見面，你比較想去哪裡？", options: ["安靜咖啡店", "一起玩遊戲"] },
+  { prompt: "訊息聊天時，你喜歡哪種節奏？", options: ["想到再慢慢回", "即時有來有往"] },
+  { prompt: "週末臨時多出三小時，你會選？", options: ["城市散步", "宅家看電影"] },
+  { prompt: "遇到心動的人，你通常會？", options: ["主動丟出話題", "先觀察對方反應"] },
+  { prompt: "關係中你更重視哪一項？", options: ["生活默契", "共同成長"] },
+];
+const DOODLE_PROMPTS = ["一起畫出理想約會", "一起完成一座夢想小屋", "一起畫今晚的心情", "一起畫一份完美早餐"];
+const GAME_MODES = new Set(["chemistry", "truth", "reaction", "doodle", "spark"]);
+
 async function readJsonBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
   if (typeof req.body === "string") return req.body ? JSON.parse(req.body) : {};
@@ -106,14 +116,53 @@ function roomGame(state, roomId) {
   if (!state.games[roomId]) {
     state.games[roomId] = {
       roomId,
+      mode: "chemistry",
       round: 1,
-      prompt: GAME_PROMPTS[0],
       answers: [],
+      scores: [],
+      drawing: [],
       updatedAt: new Date().toISOString(),
     };
   }
-  state.games[roomId].answers = Array.isArray(state.games[roomId].answers) ? state.games[roomId].answers : [];
-  return state.games[roomId];
+  const game = state.games[roomId];
+  game.mode = GAME_MODES.has(game.mode) ? game.mode : "chemistry";
+  game.round = Math.max(1, Number(game.round || 1));
+  game.answers = Array.isArray(game.answers) ? game.answers : [];
+  game.scores = Array.isArray(game.scores) ? game.scores : [];
+  game.drawing = Array.isArray(game.drawing) ? game.drawing : [];
+  configureGameRound(game);
+  return game;
+}
+
+function resetSparkTarget(game, nowMs = Date.now()) {
+  game.target = {
+    id: `spark_${nowMs.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    x: Math.round(8 + Math.random() * 84),
+    y: Math.round(10 + Math.random() * 80),
+  };
+}
+
+function configureGameRound(game) {
+  const index = Math.max(0, game.round - 1);
+  if (game.mode === "chemistry") {
+    const item = CHEMISTRY_ROUNDS[index % CHEMISTRY_ROUNDS.length];
+    game.prompt = item.prompt;
+    game.options = item.options;
+  } else if (game.mode === "truth") {
+    game.prompt = GAME_PROMPTS[index % GAME_PROMPTS.length];
+    game.options = [];
+  } else if (game.mode === "reaction") {
+    game.prompt = "燈亮後立刻按下心動按鈕，太早按不算。";
+    game.options = [];
+    game.targetAt ||= Date.now() + 2800;
+  } else if (game.mode === "doodle") {
+    game.prompt = DOODLE_PROMPTS[index % DOODLE_PROMPTS.length];
+    game.options = [];
+  } else {
+    game.prompt = "搶先點中共享光點，累積本房最高分。";
+    game.options = [];
+    if (!game.target?.id) resetSparkTarget(game);
+  }
 }
 
 function pruneState(state, nowMs) {
@@ -125,6 +174,8 @@ function pruneState(state, nowMs) {
   state.matches = state.matches.slice(-MAX_MATCHES);
   Object.values(state.games).forEach((game) => {
     game.answers = Array.isArray(game.answers) ? game.answers.slice(-MAX_GAME_ANSWERS) : [];
+    game.scores = Array.isArray(game.scores) ? game.scores.slice(-60) : [];
+    game.drawing = Array.isArray(game.drawing) ? game.drawing.slice(-600) : [];
   });
   return state;
 }
@@ -259,6 +310,9 @@ function addGameAnswer(state, payload, now) {
   if (!sessionId || !answer) return;
 
   const game = roomGame(state, roomId);
+  if (game.mode === "chemistry" && !game.options.includes(answer)) return;
+  if (!["chemistry", "truth"].includes(game.mode)) return;
+  game.answers = game.answers.filter((item) => item.sessionId !== sessionId || item.round !== game.round);
   game.answers.push({
     id: `answer_${now.getTime().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
     round: game.round,
@@ -270,11 +324,91 @@ function addGameAnswer(state, payload, now) {
   game.updatedAt = now.toISOString();
 }
 
+function selectGameMode(state, payload, now) {
+  const game = roomGame(state, text(payload.roomId, DEFAULT_ROOM_ID, 80));
+  const mode = text(payload.mode, "chemistry", 30);
+  if (!GAME_MODES.has(mode)) return;
+  game.mode = mode;
+  game.round = 1;
+  game.answers = [];
+  game.scores = [];
+  game.drawing = [];
+  game.target = null;
+  game.targetAt = mode === "reaction" ? now.getTime() + 2500 + Math.floor(Math.random() * 1800) : null;
+  game.updatedAt = now.toISOString();
+  configureGameRound(game);
+}
+
+function recordGameBuzz(state, payload, now) {
+  const sessionId = text(payload.sessionId, "", 120);
+  const game = roomGame(state, text(payload.roomId, DEFAULT_ROOM_ID, 80));
+  if (!sessionId || game.mode !== "reaction" || !game.targetAt || now.getTime() < game.targetAt) return;
+  const elapsed = Math.max(0, now.getTime() - game.targetAt);
+  const entry = {
+    sessionId,
+    name: text(payload.name, "訪客", 80),
+    score: elapsed,
+    updatedAt: now.toISOString(),
+  };
+  const existing = game.scores.findIndex((item) => item.sessionId === sessionId);
+  if (existing < 0) game.scores.push(entry);
+  else if (elapsed < Number(game.scores[existing].score || Infinity)) game.scores[existing] = entry;
+  game.answers = game.answers.filter((item) => item.sessionId !== sessionId || item.round !== game.round);
+  game.answers.push({ ...entry, id: `buzz_${now.getTime().toString(36)}_${sessionId}`, round: game.round, answer: `${elapsed} ms`, at: now.toISOString() });
+  game.updatedAt = now.toISOString();
+}
+
+function addDrawingLines(state, payload, now) {
+  const sessionId = text(payload.sessionId, "", 120);
+  const game = roomGame(state, text(payload.roomId, DEFAULT_ROOM_ID, 80));
+  if (!sessionId || game.mode !== "doodle" || !Array.isArray(payload.lines)) return;
+  const lines = payload.lines.slice(0, 80).map((line) => ({
+    x1: clampNumber(line.x1, 0, 1),
+    y1: clampNumber(line.y1, 0, 1),
+    x2: clampNumber(line.x2, 0, 1),
+    y2: clampNumber(line.y2, 0, 1),
+    color: /^#[0-9a-f]{6}$/i.test(String(line.color || "")) ? String(line.color) : "#172124",
+    width: clampNumber(line.width, 1, 12),
+    sessionId,
+  }));
+  game.drawing.push(...lines);
+  game.drawing = game.drawing.slice(-600);
+  game.updatedAt = now.toISOString();
+}
+
+function clearDrawing(state, payload, now) {
+  const game = roomGame(state, text(payload.roomId, DEFAULT_ROOM_ID, 80));
+  if (game.mode !== "doodle") return;
+  game.drawing = [];
+  game.updatedAt = now.toISOString();
+}
+
+function recordSparkTap(state, payload, now) {
+  const sessionId = text(payload.sessionId, "", 120);
+  const game = roomGame(state, text(payload.roomId, DEFAULT_ROOM_ID, 80));
+  const targetId = text(payload.targetId, "", 120);
+  if (!sessionId || game.mode !== "spark" || !targetId || targetId !== game.target?.id) return;
+  const existing = game.scores.find((item) => item.sessionId === sessionId);
+  if (existing) {
+    existing.score = Number(existing.score || 0) + 1;
+    existing.updatedAt = now.toISOString();
+  } else {
+    game.scores.push({ sessionId, name: text(payload.name, "訪客", 80), score: 1, updatedAt: now.toISOString() });
+  }
+  resetSparkTarget(game, now.getTime());
+  game.updatedAt = now.toISOString();
+}
+
 function nextGameRound(state, payload, now) {
   const roomId = text(payload.roomId, DEFAULT_ROOM_ID, 80);
   const game = roomGame(state, roomId);
   game.round += 1;
-  game.prompt = GAME_PROMPTS[(game.round - 1) % GAME_PROMPTS.length];
+  game.answers = [];
+  game.drawing = [];
+  if (["reaction", "spark"].includes(game.mode)) game.scores = [];
+  game.targetAt = game.mode === "reaction" ? now.getTime() + 2500 + Math.floor(Math.random() * 1800) : null;
+  if (game.mode === "spark") resetSparkTarget(game, now.getTime());
+  configureGameRound(game);
   game.updatedAt = now.toISOString();
 }
 
@@ -315,6 +449,11 @@ export default async function handler(req, res) {
     if (action === "match-accept") acceptMatch(state, payload, now);
     if (action === "game-answer") addGameAnswer(state, payload, now);
     if (action === "game-next") nextGameRound(state, payload, now);
+    if (action === "game-select") selectGameMode(state, payload, now);
+    if (action === "game-buzz") recordGameBuzz(state, payload, now);
+    if (action === "game-draw") addDrawingLines(state, payload, now);
+    if (action === "game-clear") clearDrawing(state, payload, now);
+    if (action === "game-tap") recordSparkTap(state, payload, now);
   }
 
   pruneState(state, now.getTime());

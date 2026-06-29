@@ -1,4 +1,4 @@
-const CACHE_NAME = "pair-room-v5-live-first";
+const CACHE_NAME = "pair-room-v8-webrtc-voice";
 const APP_SHELL = [
   "./",
   "./index.html",

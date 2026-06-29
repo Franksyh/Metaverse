@@ -175,6 +175,36 @@ const memoryValues = ["咖啡", "電影", "音樂", "料理", "展覽", "夜景"
 const STORAGE_KEY = "pair-room-state-v2";
 const CONNECTION_KEY = "pair-room-connection-v1";
 const PUBLIC_REMOTE_URL = "https://pair-room-dating-site.vercel.app";
+const TRYSTERO_MODULE_URL = "https://esm.sh/trystero@0.25.2?bundle";
+const TRYSTERO_APP_ID = "franksyh-pair-room-live";
+
+const partyGameCatalog = {
+  chemistry: {
+    name: "默契二選一",
+    icon: "heart-handshake",
+    description: "同時選答案，看看房內誰和你最有默契。",
+  },
+  truth: {
+    name: "心動快問",
+    icon: "message-circle-question-mark",
+    description: "一題一答，用真實回答自然開啟話題。",
+  },
+  reaction: {
+    name: "手速心跳",
+    icon: "gauge",
+    description: "等待訊號再搶按，挑戰房內最快反應。",
+  },
+  doodle: {
+    name: "共創塗鴉",
+    icon: "brush",
+    description: "電腦滑鼠或手機觸控，共同完成一張畫。",
+  },
+  spark: {
+    name: "心動搶點.io",
+    icon: "crosshair",
+    description: "全房真人搶同一顆光點，點中得分並刷新位置。",
+  },
+};
 
 const userProfile = {
   name: "Frank",
@@ -352,11 +382,17 @@ const state = {
   liveCapabilities: null,
   liveOnlineCount: 0,
   liveLastSyncAt: null,
+  serverTimeOffsetMs: 0,
   connectionBaseUrl: "",
   connectionReady: false,
   connectionWarning: "",
   dynamicSyncTimer: null,
   realtimeSyncTimer: null,
+  gameSyncTimer: null,
+  reactionUiTimer: null,
+  drawingColor: "#172124",
+  drawingBuffer: [],
+  drawingActive: false,
   voiceLevel: 0,
   voiceSyncTimer: null,
   installPrompt: null,
@@ -370,6 +406,15 @@ const state = {
   audioContext: null,
   analyser: null,
   waveTimer: null,
+  voiceBridgeStatus: "idle",
+  voiceBridgeModule: null,
+  voiceBridgePromise: null,
+  voiceRoom: null,
+  voiceRoomId: "",
+  voicePeerIds: [],
+  voicePeerProfiles: {},
+  voicePeerAudios: {},
+  voicePeerMetaAction: null,
   promptIndex: 0,
   quizIndex: 0,
   quizAnswers: [],
@@ -524,6 +569,178 @@ function deviceLabel(device) {
   }[device] || "網頁";
 }
 
+function safePeerProfile(payload = {}) {
+  return {
+    name: String(payload.name || "訪客").trim().slice(0, 40) || "訪客",
+    device: ["mobile", "tablet", "desktop", "web"].includes(payload.device) ? payload.device : "web",
+    sessionId: String(payload.sessionId || "").trim().slice(0, 120),
+  };
+}
+
+function voiceBridgeSummary() {
+  if (!window.isSecureContext) return "語音房需要 HTTPS。請用 Vercel 公開連結或 HTTPS tunnel 開啟。";
+  if (state.voiceBridgeStatus === "loading") return "正在建立 WebRTC 語音房，幾秒後會完成。";
+  if (state.voiceBridgeStatus === "error") return "即時語音初始化失敗，文字、配對與遊戲仍可正常使用。";
+  if (state.micOn && state.voicePeerIds.length) return `WebRTC 直連中，已接通 ${state.voicePeerIds.length} 位真人。`;
+  if (state.micOn) return "已進入語音房，等待其他裝置用同房號加入。";
+  return "點「真人上麥」後會建立 WebRTC 直連語音，不同 IP 與不同裝置都能通話。";
+}
+
+function voicePeerLabel(peerId) {
+  const peer = state.voicePeerProfiles[peerId];
+  if (peer?.name) return peer.name;
+  return `Peer ${peerId.slice(0, 4)}`;
+}
+
+async function loadVoiceBridgeModule() {
+  if (state.voiceBridgeModule?.joinRoom) return state.voiceBridgeModule;
+  if (!state.voiceBridgePromise) {
+    state.voiceBridgeStatus = "loading";
+    state.voiceBridgePromise = import(TRYSTERO_MODULE_URL)
+      .then((module) => {
+        state.voiceBridgeModule = module;
+        state.voiceBridgeStatus = "ready";
+        return module;
+      })
+      .catch((error) => {
+        state.voiceBridgePromise = null;
+        state.voiceBridgeStatus = "error";
+        throw error;
+      });
+  }
+  return state.voiceBridgePromise;
+}
+
+function attachRemoteVoiceStream(peerId, stream) {
+  const current = state.voicePeerAudios[peerId] || new Audio();
+  current.autoplay = true;
+  current.playsInline = true;
+  current.srcObject = stream;
+  state.voicePeerAudios[peerId] = current;
+  current.play().catch(() => {});
+}
+
+function removeRemoteVoiceStream(peerId) {
+  const audio = state.voicePeerAudios[peerId];
+  if (audio) {
+    audio.pause();
+    audio.srcObject = null;
+    delete state.voicePeerAudios[peerId];
+  }
+}
+
+function updateVoicePeerList() {
+  state.voicePeerIds = Object.keys(state.voicePeerProfiles);
+}
+
+async function broadcastVoicePeerMeta() {
+  if (!state.voicePeerMetaAction?.send) return;
+  await state.voicePeerMetaAction.send({
+    name: userProfile.name,
+    device: currentDeviceType(),
+    sessionId: ensureSessionId(),
+  });
+}
+
+async function teardownVoiceRoom(options = {}) {
+  const keepStream = options.keepStream === true;
+  const room = state.voiceRoom;
+  const stream = state.micStream;
+  if (room && stream) {
+    try {
+      await room.removeStream(stream);
+    } catch {}
+  }
+  if (room?.leave) {
+    try {
+      await room.leave();
+    } catch {}
+  }
+  Object.keys(state.voicePeerAudios).forEach(removeRemoteVoiceStream);
+  state.voiceRoom = null;
+  state.voiceRoomId = "";
+  state.voicePeerMetaAction = null;
+  state.voicePeerProfiles = {};
+  state.voicePeerIds = [];
+  if (!keepStream) state.voiceBridgeStatus = "idle";
+}
+
+async function ensureVoiceRoom() {
+  if (!state.micStream) return null;
+  if (state.voiceRoom && state.voiceRoomId === state.currentRoomId) return state.voiceRoom;
+  await teardownVoiceRoom({ keepStream: true });
+  const { joinRoom } = await loadVoiceBridgeModule();
+  const room = joinRoom({ appId: TRYSTERO_APP_ID }, state.currentRoomId, {
+    onJoinError: () => {
+      state.voiceBridgeStatus = "error";
+      renderMultiplayerPanel();
+    },
+  });
+  state.voiceRoom = room;
+  state.voiceRoomId = state.currentRoomId;
+  state.voiceBridgeStatus = "ready";
+  const voiceMeta = room.makeAction("voice-meta");
+  state.voicePeerMetaAction = voiceMeta;
+
+  room.onPeerJoin(async (peerId) => {
+    state.voicePeerProfiles[peerId] ||= { name: `Peer ${peerId.slice(0, 4)}`, device: "web", sessionId: "" };
+    updateVoicePeerList();
+    renderMultiplayerPanel();
+    await broadcastVoicePeerMeta();
+    if (state.micStream) {
+      try {
+        await room.addStream(state.micStream, { target: peerId });
+      } catch {}
+    }
+  });
+
+  room.onPeerLeave((peerId) => {
+    delete state.voicePeerProfiles[peerId];
+    updateVoicePeerList();
+    removeRemoteVoiceStream(peerId);
+    renderMultiplayerPanel();
+  });
+
+  room.onPeerStream((stream, peerId, metadata) => {
+    const peer = safePeerProfile(metadata || state.voicePeerProfiles[peerId]);
+    state.voicePeerProfiles[peerId] = { ...state.voicePeerProfiles[peerId], ...peer };
+    updateVoicePeerList();
+    attachRemoteVoiceStream(peerId, stream);
+    renderMultiplayerPanel();
+  });
+
+  voiceMeta.onMessage((payload, { peerId }) => {
+    state.voicePeerProfiles[peerId] = {
+      ...state.voicePeerProfiles[peerId],
+      ...safePeerProfile(payload),
+    };
+    updateVoicePeerList();
+    renderMultiplayerPanel();
+  });
+
+  await room.addStream(state.micStream, {
+    metadata: {
+      name: userProfile.name,
+      device: currentDeviceType(),
+      sessionId: ensureSessionId(),
+    },
+  });
+  await broadcastVoicePeerMeta();
+  renderMultiplayerPanel();
+  return room;
+}
+
+async function reconnectVoiceRoom() {
+  if (!state.micStream) return;
+  try {
+    await ensureVoiceRoom();
+  } catch {
+    state.voiceBridgeStatus = "error";
+    showToast("語音房重新連線失敗，請重新加入語音。");
+    renderMultiplayerPanel();
+  }
+}
+
 function defaultConnectionBaseUrl() {
   if (location.protocol === "http:" || location.protocol === "https:") {
     return location.origin;
@@ -624,15 +841,21 @@ function loadConnectionSettings() {
   } catch {
     state.connectionBaseUrl = normalizeConnectionBaseUrl(defaultConnectionBaseUrl());
   }
+  const linkedRoom = new URLSearchParams(location.search).get("room");
+  if (linkedRoom) state.currentRoomId = roomIdFromInput(linkedRoom);
   state.connectionWarning = connectionWarningFor(state.connectionBaseUrl);
 }
 
 function applyConnectionSettings(baseUrl, roomId, name, options = {}) {
+  const previousRoomId = state.currentRoomId;
   state.connectionBaseUrl = normalizeConnectionBaseUrl(baseUrl);
   state.currentRoomId = roomIdFromInput(roomId);
   userProfile.name = String(name || "").trim().slice(0, 40) || "訪客";
   state.connectionWarning = connectionWarningFor(state.connectionBaseUrl);
   state.connectionReady = true;
+  const currentUrl = new URL(location.href);
+  currentUrl.searchParams.set("room", state.currentRoomId);
+  history.replaceState(null, "", currentUrl);
   if (options.save !== false) saveConnectionSettings();
   document.body.classList.remove("connection-pending");
   syncProfileMini();
@@ -644,6 +867,11 @@ function applyConnectionSettings(baseUrl, roomId, name, options = {}) {
   if (state.activeView === "growth") renderGrowth();
   closeConnectionGate();
   startLiveSyncLoops();
+  if (state.micStream && previousRoomId !== state.currentRoomId) {
+    reconnectVoiceRoom();
+  } else if (state.micStream) {
+    broadcastVoicePeerMeta().catch(() => {});
+  }
 }
 
 function renderConnectionGate() {
@@ -660,7 +888,7 @@ function renderConnectionGate() {
   if (currentLabel) currentLabel.textContent = `${shortConnectionLabel()} / ${state.currentRoomId}`;
   if (warning) {
     warning.textContent =
-      state.connectionWarning || "同 Wi-Fi 可輸入電腦的 LAN IP；不同網路請選「跨網路公開伺服器」。";
+      state.connectionWarning || "跨縣市或不同網路請使用公開網站與相同房號；只有同 Wi-Fi 才需要輸入 LAN IP。";
     warning.classList.toggle("is-warning", Boolean(state.connectionWarning));
   }
 }
@@ -716,6 +944,7 @@ function loadSavedState() {
 
 function setView(view) {
   state.activeView = view;
+  if (view !== "games") stopGameSyncLoop();
   $$(".nav-item").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === view);
   });
@@ -746,6 +975,10 @@ function setView(view) {
   }
   if (view === "moments") {
     renderMoments();
+  }
+  if (view === "games") {
+    renderPartyGames();
+    startGameSyncLoop();
   }
   if (view === "ai") {
     renderAiBoost();
@@ -780,7 +1013,9 @@ function isPrivateNetworkHost(hostname = location.hostname) {
 }
 
 function crossIpJoinUrl() {
-  return connectionDisplayUrl();
+  const url = new URL(PUBLIC_REMOTE_URL);
+  url.searchParams.set("room", state.currentRoomId);
+  return url.toString();
 }
 
 function renderGuide() {
@@ -849,7 +1084,7 @@ function renderGuide() {
     </div>
     <div class="founder-note">
       <i data-lucide="lightbulb"></i>
-      <p>不同網路、不同 IP 的使用者請用公開 HTTPS 網址加入；同 Wi-Fi 才使用本機 LAN IP。下一階段若接正式資料庫、推播、真人審核與 WebRTC 語音/視訊，就能從原型升級為可營運產品。</p>
+      <p>不同網路、不同 IP 的使用者請用公開 HTTPS 網址加入；同 Wi-Fi 才使用本機 LAN IP。現在已可用同房號做多人聊天、配對、共玩與 WebRTC 語音，下一步再接正式資料庫、推播與真人審核，就能往營運版升級。</p>
     </div>
   `;
 
@@ -943,6 +1178,7 @@ function stopVoicePresenceLoop() {
 
 function applyRealtimeData(data) {
   if (!data?.ok) return;
+  const previousGameUpdatedAt = state.liveGame?.updatedAt || "";
   state.liveStatus = "connected";
   state.liveParticipants = Array.isArray(data.participants) ? data.participants : [];
   state.liveMessages = Array.isArray(data.messages) ? data.messages : [];
@@ -951,11 +1187,16 @@ function applyRealtimeData(data) {
   state.liveCapabilities = data.capabilities || null;
   state.liveOnlineCount = Number(data.allOnline || state.liveParticipants.length);
   state.liveLastSyncAt = data.generatedAt || new Date().toISOString();
+  const serverTime = Date.parse(data.generatedAt || "");
+  if (Number.isFinite(serverTime)) state.serverTimeOffsetMs = serverTime - Date.now();
   const statusText = $("#statusText");
   if (statusText) {
-    statusText.textContent = `${state.currentRoomId} 房 · ${state.liveOnlineCount || state.liveParticipants.length} 人在線`;
+    statusText.textContent = `${state.currentRoomId} 房 · ${state.liveParticipants.length} 人在線`;
   }
   renderMultiplayerPanel();
+  const isEditingAnswer = document.activeElement?.id === "partyAnswerInput";
+  const gameChanged = previousGameUpdatedAt !== (state.liveGame?.updatedAt || "");
+  if (state.activeView === "games" && gameChanged && !state.drawingActive && !isEditingAnswer) renderPartyGames();
   if (state.activeView === "growth") renderGrowth();
 }
 
@@ -1015,6 +1256,299 @@ async function nextLiveGameRound() {
   await syncRealtime("game-next");
 }
 
+async function selectPartyGame(mode) {
+  if (!partyGameCatalog[mode]) return;
+  await syncRealtime("game-select", { mode });
+  showToast(`已切換到「${partyGameCatalog[mode].name}」`);
+}
+
+async function submitPartyAnswer(answer) {
+  const value = String(answer || "").trim();
+  if (!value) return;
+  await syncRealtime("game-answer", { answer: value });
+}
+
+function startGameSyncLoop() {
+  window.clearInterval(state.gameSyncTimer);
+  fetchRealtimeSnapshot();
+  state.gameSyncTimer = window.setInterval(fetchRealtimeSnapshot, 2500);
+}
+
+function stopGameSyncLoop() {
+  window.clearInterval(state.gameSyncTimer);
+  window.clearInterval(state.reactionUiTimer);
+  state.gameSyncTimer = null;
+  state.reactionUiTimer = null;
+}
+
+function currentGameAnswer(game) {
+  return (game.answers || []).find((answer) => answer.sessionId === state.sessionId && answer.round === game.round);
+}
+
+function partyAnswersHtml(game) {
+  const answers = (game.answers || []).filter((answer) => answer.round === game.round);
+  if (!answers.length) return `<p class="party-empty">還沒有人回答，邀請房內真人一起玩。</p>`;
+  return `
+    <div class="party-answer-list">
+      ${answers
+        .map(
+          (answer) => `
+            <article>
+              <strong>${escapeHtml(answer.name)}</strong>
+              <span>${escapeHtml(answer.answer)}</span>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderChemistryGame(game) {
+  const myAnswer = currentGameAnswer(game)?.answer || "";
+  const answers = (game.answers || []).filter((answer) => answer.round === game.round);
+  const same = myAnswer ? answers.filter((answer) => answer.answer === myAnswer).length : 0;
+  const matchText = myAnswer && answers.length > 1 ? `有 ${Math.max(0, same - 1)} 位玩家和你選一樣` : "選完就會公開房內答案";
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    <div class="chemistry-options">
+      ${(game.options || [])
+        .map(
+          (option) => `
+            <button class="chemistry-option ${option === myAnswer ? "is-selected" : ""}" type="button" data-party-answer="${escapeHtml(option)}">
+              ${escapeHtml(option)}
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+    <p class="reaction-result">${matchText}</p>
+    ${myAnswer ? partyAnswersHtml(game) : `<p class="party-empty">先選擇你的答案，才會看到其他人的選擇。</p>`}
+  `;
+}
+
+function renderTruthGame(game) {
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    <form class="party-answer-form" id="partyAnswerForm">
+      <input id="partyAnswerInput" maxlength="180" autocomplete="off" placeholder="輸入真實回答，房內所有人都看得到" />
+      <button class="primary-action" type="submit"><i data-lucide="send"></i><span>回答</span></button>
+    </form>
+    ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderReactionGame(game) {
+  const mine = currentGameAnswer(game);
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    <div class="reaction-zone">
+      <button class="reaction-button" type="button" id="reactionButton" disabled>等待訊號…</button>
+      <p class="reaction-result" id="reactionResult">${mine ? `你的反應：${escapeHtml(mine.answer)}` : "太早按不算，看到按鈕亮起再出手。"}</p>
+    </div>
+  `;
+}
+
+function renderDoodleGame(game) {
+  const colors = ["#172124", "#087f7b", "#f56f63", "#c79125", "#6650a4"];
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    <div class="doodle-tools">
+      ${colors
+        .map(
+          (color) => `
+            <button class="doodle-color ${color === state.drawingColor ? "is-active" : ""}" type="button" data-doodle-color="${color}" style="--swatch:${color}" aria-label="選擇畫筆顏色 ${color}"></button>
+          `,
+        )
+        .join("")}
+      <button class="ghost-action doodle-clear" type="button" id="clearDoodleBtn"><i data-lucide="eraser"></i><span>清空畫布</span></button>
+    </div>
+    <canvas class="doodle-board" id="doodleBoard" width="900" height="506" aria-label="多人共創塗鴉畫布"></canvas>
+  `;
+}
+
+function renderSparkGame(game) {
+  const target = game.target || { id: "waiting", x: 50, y: 50 };
+  return `
+    <div class="party-prompt">搶先點中共享光點，累積本房最高分。</div>
+    <div class="spark-arena" id="sparkArena">
+      <button
+        class="spark-target"
+        id="sparkTarget"
+        type="button"
+        data-target-id="${escapeHtml(target.id)}"
+        style="--target-x:${Number(target.x)}%;--target-y:${Number(target.y)}%"
+        aria-label="搶下心動光點"
+      ><i data-lucide="heart"></i></button>
+      <span>滑鼠點擊或手指觸控</span>
+    </div>
+  `;
+}
+
+function renderPartyScoreboard(game) {
+  const scores = [...(game.scores || [])].sort((a, b) =>
+    game.mode === "spark" ? Number(b.score) - Number(a.score) : Number(a.score) - Number(b.score),
+  );
+  return `
+    <aside class="party-scoreboard">
+      <div class="panel-title"><i data-lucide="trophy"></i><h3>${game.mode === "reaction" ? "反應排行榜" : game.mode === "spark" ? "搶點排行榜" : "本局玩家"}</h3></div>
+      <div class="party-score-list">
+        ${
+          ["reaction", "spark"].includes(game.mode) && scores.length
+            ? scores
+                .map(
+                  (score, index) => `<article><strong>${index + 1}. ${escapeHtml(score.name)}</strong><span>${Number(score.score)} ${game.mode === "reaction" ? "ms" : "分"}</span></article>`,
+                )
+                .join("")
+            : state.liveParticipants.length
+              ? state.liveParticipants
+                  .map((participant) => `<article><strong>${escapeHtml(participant.name)}</strong><span>在線</span></article>`)
+                  .join("")
+              : `<p class="party-empty">等待其他真人加入房間。</p>`
+        }
+      </div>
+      <button class="ghost-action stretch" type="button" id="nextPartyRoundBtn"><i data-lucide="skip-forward"></i><span>下一局</span></button>
+    </aside>
+  `;
+}
+
+function renderPartyGames() {
+  const arena = $("#partyGameArena");
+  if (!arena) return;
+  const game = state.liveGame || { mode: "chemistry", round: 1, prompt: "等待遊戲同步", options: [], answers: [], scores: [], drawing: [] };
+  const mode = partyGameCatalog[game.mode] ? game.mode : "chemistry";
+  const active = partyGameCatalog[mode];
+  const stage = {
+    chemistry: renderChemistryGame,
+    truth: renderTruthGame,
+    reaction: renderReactionGame,
+    doodle: renderDoodleGame,
+    spark: renderSparkGame,
+  }[mode](game);
+
+  arena.innerHTML = `
+    <div class="party-game-intro">
+      <div><h3>和真人一起玩，玩完直接聊</h3><p>所有操作同步到目前房間，不使用 AI 玩家補位。</p></div>
+      <span class="party-room-chip"><i data-lucide="users-round"></i>${escapeHtml(state.currentRoomId)} · ${state.liveParticipants.length} 人</span>
+    </div>
+    <div class="party-game-library">
+      ${Object.entries(partyGameCatalog)
+        .map(
+          ([id, item]) => `
+            <button class="party-game-mode ${id === mode ? "is-active" : ""}" type="button" data-party-mode="${id}">
+              <span><i data-lucide="${item.icon}"></i></span>
+              <span><strong>${item.name}</strong><small>${item.description}</small></span>
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+    <div class="party-game-layout">
+      <section class="party-game-stage">
+        <div class="party-stage-head"><div><h3>${active.name}</h3><p>${active.description}</p></div><span class="party-round">第 ${Number(game.round || 1)} 局</span></div>
+        ${stage}
+      </section>
+      ${renderPartyScoreboard(game)}
+    </div>
+  `;
+
+  $$('[data-party-mode]').forEach((button) => button.addEventListener("click", () => selectPartyGame(button.dataset.partyMode)));
+  $$('[data-party-answer]').forEach((button) => button.addEventListener("click", () => submitPartyAnswer(button.dataset.partyAnswer)));
+  $("#partyAnswerForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#partyAnswerInput");
+    submitPartyAnswer(input.value);
+    input.value = "";
+  });
+  $("#nextPartyRoundBtn")?.addEventListener("click", nextLiveGameRound);
+  $("#sparkTarget")?.addEventListener("click", (event) => {
+    event.currentTarget.disabled = true;
+    syncRealtime("game-tap", { targetId: event.currentTarget.dataset.targetId });
+  });
+  if (mode === "reaction") wireReactionGame(game);
+  if (mode === "doodle") wireDoodleBoard(game);
+  syncIcons();
+}
+
+function wireReactionGame(game) {
+  window.clearInterval(state.reactionUiTimer);
+  const button = $("#reactionButton");
+  const mine = currentGameAnswer(game);
+  if (button && mine) {
+    button.disabled = true;
+    button.textContent = "本局已完成";
+    return;
+  }
+  const update = () => {
+    if (!button || mine) return;
+    const ready = Date.now() + state.serverTimeOffsetMs >= Number(game.targetAt || Infinity);
+    button.disabled = !ready;
+    button.textContent = ready ? "現在按！" : "等待訊號…";
+  };
+  update();
+  state.reactionUiTimer = window.setInterval(update, 80);
+}
+
+function drawDoodleLines(canvas, lines) {
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  lines.forEach((line) => {
+    context.strokeStyle = line.color || "#172124";
+    context.lineWidth = Number(line.width || 4);
+    context.beginPath();
+    context.moveTo(Number(line.x1) * canvas.width, Number(line.y1) * canvas.height);
+    context.lineTo(Number(line.x2) * canvas.width, Number(line.y2) * canvas.height);
+    context.stroke();
+  });
+}
+
+function wireDoodleBoard(game) {
+  const canvas = $("#doodleBoard");
+  if (!canvas) return;
+  drawDoodleLines(canvas, game.drawing || []);
+  let previous = null;
+  const point = (event) => {
+    const bounds = canvas.getBoundingClientRect();
+    return { x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height };
+  };
+  const drawLocalLines = () => drawDoodleLines(canvas, [...(game.drawing || []), ...state.drawingBuffer]);
+  canvas.addEventListener("pointerdown", (event) => {
+    state.drawingActive = true;
+    state.drawingBuffer = [];
+    previous = point(event);
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!state.drawingActive || !previous) return;
+    const next = point(event);
+    const line = { x1: previous.x, y1: previous.y, x2: next.x, y2: next.y, color: state.drawingColor, width: 4 };
+    state.drawingBuffer.push(line);
+    drawLocalLines();
+    previous = next;
+  });
+  const finish = async () => {
+    if (!state.drawingActive) return;
+    previous = null;
+    const lines = state.drawingBuffer.splice(0);
+    while (lines.length) {
+      await syncRealtime("game-draw", { lines: lines.splice(0, 80) });
+    }
+    state.drawingActive = false;
+    renderPartyGames();
+  };
+  canvas.addEventListener("pointerup", finish);
+  canvas.addEventListener("pointercancel", finish);
+  $$('[data-doodle-color]').forEach((button) => {
+    button.addEventListener("click", () => {
+      state.drawingColor = button.dataset.doodleColor;
+      renderPartyGames();
+    });
+  });
+  $("#clearDoodleBtn")?.addEventListener("click", () => syncRealtime("game-clear"));
+}
+
 function leaveRealtimeRoom() {
   if (!state.connectionReady) return;
   const payload = JSON.stringify(multiplayerPayload("leave"));
@@ -1039,6 +1573,7 @@ function renderMultiplayerPanel() {
   const participants = state.liveParticipants;
   const messages = state.liveMessages;
   const voiceParticipants = participants.filter((participant) => participant.voice?.joined);
+  const directVoicePeers = state.voicePeerIds;
   const matches = state.liveMatches;
   const game = state.liveGame || { round: 1, prompt: "用一句話形容你今天的心情。", answers: [] };
   const lastSync = state.liveLastSyncAt
@@ -1091,7 +1626,11 @@ function renderMultiplayerPanel() {
       </button>
       <button class="ghost-action" type="button" id="openConnectionGateBtn">
         <i data-lucide="network"></i>
-        <span>連線 IP</span>
+        <span>房號 / IP</span>
+      </button>
+      <button class="ghost-action" type="button" id="copyRoomLinkBtn">
+        <i data-lucide="share-2"></i>
+        <span>分享房間</span>
       </button>
     </div>
     <div class="multiplayer-grid">
@@ -1155,7 +1694,21 @@ function renderMultiplayerPanel() {
           <i data-lucide="audio-lines"></i>
           <h4>語音房</h4>
         </div>
-        <p>使用瀏覽器麥克風上麥，房內會同步上麥、靜音與說話狀態。</p>
+        <p>${escapeHtml(voiceBridgeSummary())}</p>
+        ${
+          directVoicePeers.length
+            ? `
+              <div class="voice-direct-peer-list">
+                ${directVoicePeers
+                  .map((peerId) => {
+                    const peer = state.voicePeerProfiles[peerId] || {};
+                    return `<span>${escapeHtml(voicePeerLabel(peerId))} · ${deviceLabel(peer.device)}</span>`;
+                  })
+                  .join("")}
+              </div>
+            `
+            : ""
+        }
         <div class="voice-speaker-list">
           ${
             voiceParticipants.length
@@ -1173,7 +1726,9 @@ function renderMultiplayerPanel() {
                     `;
                   })
                   .join("")
-              : `<span class="empty-live-note">還沒有人上麥，點「真人上麥」開始語音房。</span>`
+              : directVoicePeers.length
+                ? `<span class="empty-live-note">已建立 P2P 語音連線，等待對方完成上麥同步。</span>`
+                : `<span class="empty-live-note">還沒有人上麥，點「真人上麥」開始語音房。</span>`
           }
         </div>
       </section>
@@ -1213,33 +1768,12 @@ function renderMultiplayerPanel() {
       <section class="live-game-card">
         <div class="sub-panel-title">
           <i data-lucide="gamepad-2"></i>
-          <h4>多人破冰遊戲 · 第 ${Number(game.round || 1)} 題</h4>
+          <h4>${partyGameCatalog[game.mode]?.name || "多人破冰遊戲"} · 第 ${Number(game.round || 1)} 局</h4>
         </div>
         <p class="live-game-prompt">${escapeHtml(game.prompt)}</p>
-        <form class="live-game-form" id="liveGameForm">
-          <input id="liveGameInput" type="text" maxlength="180" placeholder="輸入你的答案，所有人都看得到" autocomplete="off" />
-          <button class="primary-action" type="submit">
-            <i data-lucide="send"></i>
-            <span>回答</span>
-          </button>
-        </form>
-        <div class="live-game-answers">
-          ${
-            Array.isArray(game.answers) && game.answers.length
-              ? game.answers
-                  .slice(-6)
-                  .map(
-                    (answer) => `
-                      <article class="${answer.sessionId === state.sessionId ? "mine" : ""}">
-                        <strong>${escapeHtml(answer.name)}</strong>
-                        <span>${escapeHtml(answer.answer)}</span>
-                      </article>
-                    `,
-                  )
-                  .join("")
-              : `<span class="empty-live-note">還沒有人回答，成為第一個破冰的人。</span>`
-          }
-        </div>
+        <button class="primary-action stretch" type="button" id="openPartyGamesBtn">
+          <i data-lucide="play"></i><span>進入真人共玩遊戲廳</span>
+        </button>
       </section>
     </div>
   `;
@@ -1249,7 +1783,9 @@ function renderMultiplayerPanel() {
   $("#voiceMuteLiveBtn")?.addEventListener("click", toggleMute);
   $("#randomMatchBtn")?.addEventListener("click", () => inviteLiveMatch());
   $("#nextGameBtn")?.addEventListener("click", nextLiveGameRound);
+  $("#openPartyGamesBtn")?.addEventListener("click", () => setView("games"));
   $("#openConnectionGateBtn")?.addEventListener("click", openConnectionGate);
+  $("#copyRoomLinkBtn")?.addEventListener("click", copyRoomLink);
   $$("[data-invite-session]").forEach((button) => {
     button.addEventListener("click", () => inviteLiveMatch(button.dataset.inviteSession));
   });
@@ -1260,12 +1796,6 @@ function renderMultiplayerPanel() {
     event.preventDefault();
     const input = $("#liveMessageInput");
     sendLiveMessage(input.value);
-    input.value = "";
-  });
-  $("#liveGameForm")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const input = $("#liveGameInput");
-    sendGameAnswer(input.value);
     input.value = "";
   });
   const list = $("#liveMessageList");
@@ -1639,7 +2169,7 @@ function renderProfilePreview() {
 
 async function toggleMic() {
   if (state.micOn) {
-    stopMic();
+    await stopMic();
     syncRealtime("voice-leave", voicePayload());
     showToast("已離開語音");
     renderRoomStage();
@@ -1662,16 +2192,23 @@ async function toggleMic() {
     source.connect(state.analyser);
     state.micOn = true;
     state.muted = false;
+    await ensureVoiceRoom();
     renderRoomStage();
+    renderMultiplayerPanel();
     startWave();
     startVoicePresenceLoop();
-    showToast("已加入語音房");
+    showToast("已加入語音房，其他裝置輸入同房號即可通話");
   } catch (error) {
-    showToast("麥克風未開啟，請確認瀏覽器權限");
+    await stopMic();
+    showToast("語音房初始化失敗，請確認麥克風權限或稍後再試");
   }
 }
 
-function stopMic() {
+async function stopMic(options = {}) {
+  const skipVoiceLeave = options.skipVoiceLeave === true;
+  if (!skipVoiceLeave) {
+    await teardownVoiceRoom();
+  }
   if (state.micStream) {
     state.micStream.getTracks().forEach((track) => track.stop());
   }
@@ -1686,6 +2223,7 @@ function stopMic() {
   state.micStream = null;
   state.audioContext = null;
   state.analyser = null;
+  renderMultiplayerPanel();
 }
 
 function toggleMute() {
@@ -2762,6 +3300,16 @@ async function copyRemoteUrl() {
   }
 }
 
+async function copyRoomLink() {
+  const value = crossIpJoinUrl();
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(`房間 ${state.currentRoomId} 的連結已複製`);
+  } catch {
+    showToast(`分享連結：${value}`);
+  }
+}
+
 async function handleWaitlistSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -3107,7 +3655,7 @@ function wireEvents() {
       const warning = $("#connectionWarning");
       if (warning) {
         warning.textContent =
-          state.connectionWarning || "同 Wi-Fi 可輸入電腦的 LAN IP；不同網路請選「跨網路公開伺服器」。";
+          state.connectionWarning || "跨縣市或不同網路請使用公開網站與相同房號；只有同 Wi-Fi 才需要輸入 LAN IP。";
         warning.classList.toggle("is-warning", Boolean(state.connectionWarning));
       }
     });
@@ -3170,12 +3718,14 @@ function wireEvents() {
     $("#chatInput").focus();
   });
 
-  $("#spinPromptBtn").addEventListener("click", () => {
-    state.promptIndex += 1;
-    renderPrompt();
+  $("#backToLiveRoomBtn")?.addEventListener("click", () => setView("rooms"));
+  $("#partyGameArena")?.addEventListener("click", (event) => {
+    const reactionButton = event.target.closest("#reactionButton");
+    if (!reactionButton || reactionButton.disabled) return;
+    reactionButton.disabled = true;
+    window.clearInterval(state.reactionUiTimer);
+    syncRealtime("game-buzz");
   });
-
-  $("#resetGamesBtn").addEventListener("click", resetGames);
   $("#momentForm").addEventListener("submit", handleMomentSubmit);
   $("#boostNowBtn").addEventListener("click", startBoost);
   $("#waitlistForm").addEventListener("submit", handleWaitlistSubmit);
@@ -3197,16 +3747,17 @@ function init() {
   renderNearby();
   renderChat();
   renderMoments();
-  renderPrompt();
-  renderQuiz();
-  resetMemory();
+  renderPartyGames();
   renderAiBoost();
   renderGrowth();
   renderSafetyCenter();
   wireEvents();
   registerPwa();
   openConnectionGate();
-  window.addEventListener("pagehide", leaveRealtimeRoom);
+  window.addEventListener("pagehide", () => {
+    leaveRealtimeRoom();
+    teardownVoiceRoom().catch(() => {});
+  });
   syncIcons();
 }
 
