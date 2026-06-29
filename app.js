@@ -682,7 +682,7 @@ async function ensureVoiceRoom() {
   const voiceMeta = room.makeAction("voice-meta");
   state.voicePeerMetaAction = voiceMeta;
 
-  room.onPeerJoin(async (peerId) => {
+  room.onPeerJoin = async (peerId) => {
     state.voicePeerProfiles[peerId] ||= { name: `Peer ${peerId.slice(0, 4)}`, device: "web", sessionId: "" };
     updateVoicePeerList();
     renderMultiplayerPanel();
@@ -692,31 +692,31 @@ async function ensureVoiceRoom() {
         await room.addStream(state.micStream, { target: peerId });
       } catch {}
     }
-  });
+  };
 
-  room.onPeerLeave((peerId) => {
+  room.onPeerLeave = (peerId) => {
     delete state.voicePeerProfiles[peerId];
     updateVoicePeerList();
     removeRemoteVoiceStream(peerId);
     renderMultiplayerPanel();
-  });
+  };
 
-  room.onPeerStream((stream, peerId, metadata) => {
+  room.onPeerStream = (stream, peerId, metadata) => {
     const peer = safePeerProfile(metadata || state.voicePeerProfiles[peerId]);
     state.voicePeerProfiles[peerId] = { ...state.voicePeerProfiles[peerId], ...peer };
     updateVoicePeerList();
     attachRemoteVoiceStream(peerId, stream);
     renderMultiplayerPanel();
-  });
+  };
 
-  voiceMeta.onMessage((payload, { peerId }) => {
+  voiceMeta.onMessage = (payload, { peerId }) => {
     state.voicePeerProfiles[peerId] = {
       ...state.voicePeerProfiles[peerId],
       ...safePeerProfile(payload),
     };
     updateVoicePeerList();
     renderMultiplayerPanel();
-  });
+  };
 
   await room.addStream(state.micStream, {
     metadata: {
