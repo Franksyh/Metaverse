@@ -184,10 +184,20 @@ const partyGameCatalog = {
     icon: "heart-handshake",
     description: "同時選答案，看看房內誰和你最有默契。",
   },
+  vibe: {
+    name: "靈魂四選一",
+    icon: "messages-square",
+    description: "像 Litmatch 的 soul game，一題四選找今晚同頻的人。",
+  },
   truth: {
     name: "心動快問",
     icon: "message-circle-question-mark",
     description: "一題一答，用真實回答自然開啟話題。",
+  },
+  story: {
+    name: "曖昧接龍",
+    icon: "pen-line",
+    description: "每人接一句，把房間氣氛寫成今晚的小劇場。",
   },
   reaction: {
     name: "手速心跳",
@@ -203,6 +213,11 @@ const partyGameCatalog = {
     name: "心動搶點.io",
     icon: "crosshair",
     description: "全房真人搶同一顆光點，點中得分並刷新位置。",
+  },
+  orbit: {
+    name: "追光亂鬥.io",
+    icon: "disc-3",
+    description: "光點會自己亂跳，房內所有人都能搶分衝榜。",
   },
 };
 
@@ -1271,7 +1286,7 @@ async function submitPartyAnswer(answer) {
 function startGameSyncLoop() {
   window.clearInterval(state.gameSyncTimer);
   fetchRealtimeSnapshot();
-  state.gameSyncTimer = window.setInterval(fetchRealtimeSnapshot, 2500);
+  state.gameSyncTimer = window.setInterval(fetchRealtimeSnapshot, 1200);
 }
 
 function stopGameSyncLoop() {
@@ -1285,8 +1300,12 @@ function currentGameAnswer(game) {
   return (game.answers || []).find((answer) => answer.sessionId === state.sessionId && answer.round === game.round);
 }
 
+function currentRoundAnswers(game) {
+  return (game.answers || []).filter((answer) => answer.round === game.round);
+}
+
 function partyAnswersHtml(game) {
-  const answers = (game.answers || []).filter((answer) => answer.round === game.round);
+  const answers = currentRoundAnswers(game);
   if (!answers.length) return `<p class="party-empty">還沒有人回答，邀請房內真人一起玩。</p>`;
   return `
     <div class="party-answer-list">
@@ -1306,9 +1325,12 @@ function partyAnswersHtml(game) {
 
 function renderChemistryGame(game) {
   const myAnswer = currentGameAnswer(game)?.answer || "";
-  const answers = (game.answers || []).filter((answer) => answer.round === game.round);
+  const answers = currentRoundAnswers(game);
   const same = myAnswer ? answers.filter((answer) => answer.answer === myAnswer).length : 0;
-  const matchText = myAnswer && answers.length > 1 ? `有 ${Math.max(0, same - 1)} 位玩家和你選一樣` : "選完就會公開房內答案";
+  const matchText =
+    myAnswer && answers.length > 1
+      ? `目前有 ${Math.max(0, same - 1)} 位玩家和你同答案，這題很好開話題。`
+      : "先選一個答案，看看今晚誰和你最同頻。";
   return `
     <div class="party-prompt">${escapeHtml(game.prompt)}</div>
     <div class="chemistry-options">
@@ -1323,7 +1345,31 @@ function renderChemistryGame(game) {
         .join("")}
     </div>
     <p class="reaction-result">${matchText}</p>
-    ${myAnswer ? partyAnswersHtml(game) : `<p class="party-empty">先選擇你的答案，才會看到其他人的選擇。</p>`}
+    ${myAnswer ? partyAnswersHtml(game) : `<p class="party-empty">還沒送出答案，按一個選項就會同步到整個房間。</p>`}
+  `;
+}
+
+function renderVibeGame(game) {
+  const myAnswer = currentGameAnswer(game)?.answer || "";
+  const answers = currentRoundAnswers(game);
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    <div class="vibe-options">
+      ${(game.options || [])
+        .map((option) => {
+          const count = answers.filter((answer) => answer.answer === option).length;
+          const percent = answers.length ? Math.round((count / answers.length) * 100) : 0;
+          return `
+            <button class="vibe-option ${option === myAnswer ? "is-selected" : ""}" type="button" data-party-answer="${escapeHtml(option)}">
+              <strong>${escapeHtml(option)}</strong>
+              <span>${count ? `${count} 人 · ${percent}%` : "搶先選這個"}</span>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+    <p class="reaction-result">${myAnswer ? `你選了「${escapeHtml(myAnswer)}」，看看誰和你今晚最同 vibe。` : "這題會即時統計整個房內的氣氛走向。"}</p>
+    ${answers.length ? partyAnswersHtml(game) : `<p class="party-empty">還沒有人投票，先幫這一局定調。</p>`}
   `;
 }
 
@@ -1331,10 +1377,43 @@ function renderTruthGame(game) {
   return `
     <div class="party-prompt">${escapeHtml(game.prompt)}</div>
     <form class="party-answer-form" id="partyAnswerForm">
-      <input id="partyAnswerInput" maxlength="180" autocomplete="off" placeholder="輸入真實回答，房內所有人都看得到" />
-      <button class="primary-action" type="submit"><i data-lucide="send"></i><span>回答</span></button>
+      <input id="partyAnswerInput" maxlength="180" autocomplete="off" placeholder="用一句真話接球，讓聊天室自然熱起來" />
+      <button class="primary-action" type="submit"><i data-lucide="send"></i><span>送出</span></button>
     </form>
     ${partyAnswersHtml(game)}
+  `;
+}
+
+function renderStoryGame(game) {
+  const entries = currentRoundAnswers(game);
+  const totalPlayers = Math.max(state.liveParticipants.length, entries.length);
+  const remaining = Math.max(totalPlayers - entries.length, 0);
+  return `
+    <div class="party-prompt">${escapeHtml(game.prompt)}</div>
+    <form class="party-answer-form" id="partyAnswerForm">
+      <input id="partyAnswerInput" maxlength="120" autocomplete="off" placeholder="接一句，8 到 24 個字最剛好" />
+      <button class="primary-action" type="submit"><i data-lucide="send"></i><span>接上</span></button>
+    </form>
+    <div class="story-lane">
+      ${
+        entries.length
+          ? entries
+              .map(
+                (entry, index) => `
+                  <article class="story-entry">
+                    <span>${index + 1}</span>
+                    <div>
+                      <strong>${escapeHtml(entry.name)}</strong>
+                      <p>${escapeHtml(entry.answer)}</p>
+                    </div>
+                  </article>
+                `,
+              )
+              .join("")
+          : `<p class="party-empty">還沒有人起頭，寫下房間今晚的第一句台詞。</p>`
+      }
+    </div>
+    <p class="reaction-result">${remaining ? `還差 ${remaining} 人接龍，句子越亂越有話題。` : "這段故事已經成形，按下一局換一個新場景。"}</p>
   `;
 }
 
@@ -1344,7 +1423,7 @@ function renderReactionGame(game) {
     <div class="party-prompt">${escapeHtml(game.prompt)}</div>
     <div class="reaction-zone">
       <button class="reaction-button" type="button" id="reactionButton" disabled>等待訊號…</button>
-      <p class="reaction-result" id="reactionResult">${mine ? `你的反應：${escapeHtml(mine.answer)}` : "太早按不算，看到按鈕亮起再出手。"}</p>
+      <p class="reaction-result" id="reactionResult">${mine ? `你的成績：${escapeHtml(mine.answer)}` : "燈亮之前先別按，房內所有人一起搶最快。"}</p>
     </div>
   `;
 }
@@ -1369,8 +1448,10 @@ function renderDoodleGame(game) {
 
 function renderSparkGame(game) {
   const target = game.target || { id: "waiting", x: 50, y: 50 };
+  const leader = [...(game.scores || [])].sort((a, b) => Number(b.score) - Number(a.score))[0];
   return `
-    <div class="party-prompt">搶先點中共享光點，累積本房最高分。</div>
+    <div class="party-prompt">看見心動光點就搶，節奏像輕量 .io，適合語音房暖場。</div>
+    <div class="orbit-status"><strong>${leader ? `目前領先：${escapeHtml(leader.name)} · ${Number(leader.score)} 分` : "目前還沒有人得分"}</strong></div>
     <div class="spark-arena" id="sparkArena">
       <button
         class="spark-target"
@@ -1385,16 +1466,53 @@ function renderSparkGame(game) {
   `;
 }
 
+function renderOrbitGame(game) {
+  const target = game.target || { id: "waiting", x: 50, y: 50 };
+  const remaining = Math.max(0, Number(game.targetExpiresAt || 0) - (Date.now() + state.serverTimeOffsetMs));
+  const duration = Math.max(1, Number(game.targetDuration || 1400));
+  const progress = Math.max(0, Math.min(100, Math.round((remaining / duration) * 100)));
+  return `
+    <div class="party-prompt">光點會自己亂跳，所有人一起追光搶分，玩感更像多人 .io 派對房。</div>
+    <div class="orbit-status">
+      <strong>鎖定剩餘 <span id="orbitCountdownText">${(remaining / 1000).toFixed(1)}s</span></strong>
+      <div class="orbit-progress" aria-hidden="true"><b id="orbitCountdownBar" style="width:${progress}%"></b></div>
+    </div>
+    <div class="spark-arena orbit-arena">
+      <button
+        class="spark-target orbit-target"
+        id="orbitTarget"
+        type="button"
+        data-target-id="${escapeHtml(target.id)}"
+        style="--target-x:${Number(target.x)}%;--target-y:${Number(target.y)}%"
+        aria-label="搶下追光點"
+      ><i data-lucide="zap"></i></button>
+      <span>命中一次就會立刻換位置，房內所有裝置同步衝榜</span>
+    </div>
+  `;
+}
+
 function renderPartyScoreboard(game) {
   const scores = [...(game.scores || [])].sort((a, b) =>
-    game.mode === "spark" ? Number(b.score) - Number(a.score) : Number(a.score) - Number(b.score),
+    game.mode === "reaction" ? Number(a.score) - Number(b.score) : Number(b.score) - Number(a.score),
   );
+  const answers = currentRoundAnswers(game);
+  const answersBySession = new Map(answers.map((answer) => [answer.sessionId, answer]));
+  const title =
+    game.mode === "reaction"
+      ? "反應排行榜"
+      : game.mode === "spark"
+        ? "搶點排行榜"
+        : game.mode === "orbit"
+          ? "追光排行榜"
+          : game.mode === "story"
+            ? "接龍進度"
+            : "本局進度";
   return `
     <aside class="party-scoreboard">
-      <div class="panel-title"><i data-lucide="trophy"></i><h3>${game.mode === "reaction" ? "反應排行榜" : game.mode === "spark" ? "搶點排行榜" : "本局玩家"}</h3></div>
+      <div class="panel-title"><i data-lucide="trophy"></i><h3>${title}</h3></div>
       <div class="party-score-list">
         ${
-          ["reaction", "spark"].includes(game.mode) && scores.length
+          ["reaction", "spark", "orbit"].includes(game.mode) && scores.length
             ? scores
                 .map(
                   (score, index) => `<article><strong>${index + 1}. ${escapeHtml(score.name)}</strong><span>${Number(score.score)} ${game.mode === "reaction" ? "ms" : "分"}</span></article>`,
@@ -1402,9 +1520,21 @@ function renderPartyScoreboard(game) {
                 .join("")
             : state.liveParticipants.length
               ? state.liveParticipants
-                  .map((participant) => `<article><strong>${escapeHtml(participant.name)}</strong><span>在線</span></article>`)
+                  .map((participant) => {
+                    const answer = answersBySession.get(participant.sessionId);
+                    const status = answer
+                      ? game.mode === "story"
+                        ? "已接龍"
+                        : game.mode === "truth"
+                          ? "已回答"
+                          : answer.answer
+                      : game.mode === "doodle"
+                        ? "一起共畫"
+                        : "等待加入";
+                    return `<article><strong>${escapeHtml(participant.name)}</strong><span>${escapeHtml(status)}</span></article>`;
+                  })
                   .join("")
-              : `<p class="party-empty">等待其他真人加入房間。</p>`
+              : `<p class="party-empty">房內還沒有其他人，分享房號後會更好玩。</p>`
         }
       </div>
       <button class="ghost-action stretch" type="button" id="nextPartyRoundBtn"><i data-lucide="skip-forward"></i><span>下一局</span></button>
@@ -1415,20 +1545,25 @@ function renderPartyScoreboard(game) {
 function renderPartyGames() {
   const arena = $("#partyGameArena");
   if (!arena) return;
+  window.clearInterval(state.reactionUiTimer);
+  state.reactionUiTimer = null;
   const game = state.liveGame || { mode: "chemistry", round: 1, prompt: "等待遊戲同步", options: [], answers: [], scores: [], drawing: [] };
   const mode = partyGameCatalog[game.mode] ? game.mode : "chemistry";
   const active = partyGameCatalog[mode];
   const stage = {
     chemistry: renderChemistryGame,
+    vibe: renderVibeGame,
     truth: renderTruthGame,
+    story: renderStoryGame,
     reaction: renderReactionGame,
     doodle: renderDoodleGame,
     spark: renderSparkGame,
+    orbit: renderOrbitGame,
   }[mode](game);
 
   arena.innerHTML = `
     <div class="party-game-intro">
-      <div><h3>和真人一起玩，玩完直接聊</h3><p>所有操作同步到目前房間，不使用 AI 玩家補位。</p></div>
+      <div><h3>和真人一起玩，玩完直接聊</h3><p>所有操作都同步到目前房間，適合語音房暖場、配對後破冰與多人同玩。</p></div>
       <span class="party-room-chip"><i data-lucide="users-round"></i>${escapeHtml(state.currentRoomId)} · ${state.liveParticipants.length} 人</span>
     </div>
     <div class="party-game-library">
@@ -1465,8 +1600,14 @@ function renderPartyGames() {
     event.currentTarget.disabled = true;
     syncRealtime("game-tap", { targetId: event.currentTarget.dataset.targetId });
   });
+  $("#orbitTarget")?.addEventListener("click", (event) => {
+    event.currentTarget.dataset.pending = "true";
+    event.currentTarget.disabled = true;
+    syncRealtime("game-tap", { targetId: event.currentTarget.dataset.targetId });
+  });
   if (mode === "reaction") wireReactionGame(game);
   if (mode === "doodle") wireDoodleBoard(game);
+  if (mode === "orbit") wireOrbitGame(game);
   syncIcons();
 }
 
@@ -1484,6 +1625,25 @@ function wireReactionGame(game) {
     const ready = Date.now() + state.serverTimeOffsetMs >= Number(game.targetAt || Infinity);
     button.disabled = !ready;
     button.textContent = ready ? "現在按！" : "等待訊號…";
+  };
+  update();
+  state.reactionUiTimer = window.setInterval(update, 80);
+}
+
+function wireOrbitGame(game) {
+  window.clearInterval(state.reactionUiTimer);
+  const button = $("#orbitTarget");
+  const text = $("#orbitCountdownText");
+  const bar = $("#orbitCountdownBar");
+  const update = () => {
+    if (!button) return;
+    const remaining = Math.max(0, Number(game.targetExpiresAt || 0) - (Date.now() + state.serverTimeOffsetMs));
+    const duration = Math.max(1, Number(game.targetDuration || 1400));
+    const progress = Math.max(0, Math.min(100, Math.round((remaining / duration) * 100)));
+    const pending = button.dataset.pending === "true";
+    button.disabled = pending || remaining <= 0;
+    if (text) text.textContent = `${(remaining / 1000).toFixed(1)}s`;
+    if (bar) bar.style.width = `${progress}%`;
   };
   update();
   state.reactionUiTimer = window.setInterval(update, 80);

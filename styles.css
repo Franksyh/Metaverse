@@ -1484,7 +1484,7 @@ textarea {
 
 .party-game-library {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1594,6 +1594,13 @@ textarea {
   margin-top: 14px;
 }
 
+.vibe-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .chemistry-option,
 .reaction-button {
   min-height: 62px;
@@ -1609,6 +1616,40 @@ textarea {
   border-color: var(--coral);
   color: var(--coral-dark);
   background: #fff1ef;
+}
+
+.vibe-option {
+  display: grid;
+  gap: 6px;
+  min-height: 84px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--panel-soft);
+  text-align: left;
+}
+
+.vibe-option strong {
+  font-size: 16px;
+}
+
+.vibe-option span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.vibe-option:hover,
+.vibe-option.is-selected {
+  border-color: var(--coral);
+  color: var(--coral-dark);
+  background: #fff1ef;
+}
+
+.vibe-option:hover span,
+.vibe-option.is-selected span {
+  color: var(--coral-dark);
 }
 
 .party-answer-list,
@@ -1650,6 +1691,39 @@ textarea {
   border-radius: var(--radius);
 }
 
+.story-lane {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.story-entry {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.story-entry > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: var(--teal);
+  font-weight: 800;
+}
+
+.story-entry p {
+  margin-top: 4px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .reaction-zone {
   display: grid;
   gap: 14px;
@@ -1675,6 +1749,30 @@ textarea {
   min-height: 24px;
   color: var(--muted);
   font-weight: 700;
+}
+
+.orbit-status {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.orbit-status strong {
+  color: var(--ink);
+}
+
+.orbit-progress {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-soft);
+}
+
+.orbit-progress b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--coral), var(--teal));
 }
 
 .doodle-tools {
@@ -1731,6 +1829,10 @@ textarea {
   font-weight: 700;
 }
 
+.orbit-arena {
+  background: radial-gradient(circle at center, #f7fffd 0%, #dff2ee 100%);
+}
+
 .spark-target {
   position: absolute;
   left: var(--target-x);
@@ -1758,6 +1860,13 @@ textarea {
 .spark-target svg {
   width: 25px;
   height: 25px;
+}
+
+.orbit-target {
+  width: 54px;
+  height: 54px;
+  background: var(--teal);
+  box-shadow: 0 8px 24px rgba(8, 127, 123, 0.28);
 }
 
 .party-empty {
@@ -3227,8 +3336,13 @@ textarea {
 
   .party-game-library,
   .chemistry-options,
+  .vibe-options,
   .party-answer-form {
     grid-template-columns: 1fr;
+  }
+
+  .story-entry {
+    grid-template-columns: 28px minmax(0, 1fr);
   }
 
   .party-game-mode {

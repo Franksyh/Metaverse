@@ -5,22 +5,35 @@ const ONLINE_WINDOW_MS = 60_000;
 const DEFAULT_ROOM_ID = "late-night";
 
 const GAME_PROMPTS = [
-  "用一句話形容你今天的心情。",
-  "第一次聊天時，你最喜歡被問什麼問題？",
-  "如果週末只安排一個約會行程，你會選咖啡、電影、散步還是遊戲？",
-  "分享一個你最近覺得生活變亮的小事。",
-  "你希望理想對象具備哪一個很小但很重要的習慣？",
+  "如果今晚只能帶一個人私奔一小時，你最想做什麼？",
+  "剛配對成功時，你最希望收到哪一種開場白？",
+  "聊到凌晨還不想睡時，你最想聽見對方說哪句話？",
+  "分享一個最近讓你突然心軟的小瞬間。",
+  "如果房內有人和你很合拍，你會想先一起完成什麼？",
 ];
 
 const CHEMISTRY_ROUNDS = [
-  { prompt: "第一次見面，你比較想去哪裡？", options: ["安靜咖啡店", "一起玩遊戲"] },
-  { prompt: "訊息聊天時，你喜歡哪種節奏？", options: ["想到再慢慢回", "即時有來有往"] },
-  { prompt: "週末臨時多出三小時，你會選？", options: ["城市散步", "宅家看電影"] },
-  { prompt: "遇到心動的人，你通常會？", options: ["主動丟出話題", "先觀察對方反應"] },
-  { prompt: "關係中你更重視哪一項？", options: ["生活默契", "共同成長"] },
+  { prompt: "第一次見面，你比較想去哪裡？", options: ["深夜散步", "找間小店續攤"] },
+  { prompt: "配對成功後，你更想先做什麼？", options: ["先語音聽聲音", "先文字慢慢聊"] },
+  { prompt: "今晚有人約你，你更吃哪一套？", options: ["有點壞的幽默", "很真誠的關心"] },
+  { prompt: "曖昧升溫時，你比較喜歡？", options: ["直接一點", "慢慢試探"] },
+  { prompt: "深夜聊天最加分的是？", options: ["會接梗", "會接住情緒"] },
 ];
-const DOODLE_PROMPTS = ["一起畫出理想約會", "一起完成一座夢想小屋", "一起畫今晚的心情", "一起畫一份完美早餐"];
-const GAME_MODES = new Set(["chemistry", "truth", "reaction", "doodle", "spark"]);
+const VIBE_ROUNDS = [
+  { prompt: "現在有人約你馬上出門，你最想去哪裡？", options: ["夜景散步", "深夜語音", "桌遊局", "咖啡續攤"] },
+  { prompt: "剛配對成功，你最想收到哪種開場？", options: ["一句直接稱讚", "一個有梗問題", "語音邀請", "分享歌單"] },
+  { prompt: "房內有人跟你同頻，你會先怎麼示好？", options: ["先丟表情包", "先問今天過得如何", "直接邀請玩下一局", "分享自己的小秘密"] },
+  { prompt: "今晚最適合的曖昧節奏？", options: ["快節奏來回", "慢慢試探", "先一起玩遊戲", "先聽聲音再聊"] },
+];
+const STORY_PROMPTS = [
+  "用 8 到 20 個字接下去：如果今晚的房間像一部愛情片，開場會是…",
+  "接一句：有人在語音房先笑了一聲，結果整個房間突然…",
+  "接一句：如果今晚真的約成，最可能先發生的是…",
+  "接一句：這局玩完之後，房裡最有可能出現的一句話是…",
+];
+const DOODLE_PROMPTS = ["畫出你理想約會的第一站", "畫出此刻房內最像的一種天氣", "畫出讓你一秒心動的小動作", "畫出今晚房間的 vibe 吉祥物"];
+const ORBIT_TARGET_MS = 1400;
+const GAME_MODES = new Set(["chemistry", "vibe", "truth", "story", "reaction", "doodle", "spark", "orbit"]);
 
 async function readJsonBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
@@ -121,6 +134,10 @@ function roomGame(state, roomId) {
       answers: [],
       scores: [],
       drawing: [],
+      target: null,
+      targetAt: null,
+      targetExpiresAt: null,
+      targetDuration: null,
       updatedAt: new Date().toISOString(),
     };
   }
@@ -130,7 +147,11 @@ function roomGame(state, roomId) {
   game.answers = Array.isArray(game.answers) ? game.answers : [];
   game.scores = Array.isArray(game.scores) ? game.scores : [];
   game.drawing = Array.isArray(game.drawing) ? game.drawing : [];
-  configureGameRound(game);
+  game.target = game.target && typeof game.target === "object" ? game.target : null;
+  game.targetAt = Number(game.targetAt || 0) || null;
+  game.targetExpiresAt = Number(game.targetExpiresAt || 0) || null;
+  game.targetDuration = Number(game.targetDuration || 0) || null;
+  configureGameRound(game, Date.now());
   return game;
 }
 
@@ -142,26 +163,51 @@ function resetSparkTarget(game, nowMs = Date.now()) {
   };
 }
 
-function configureGameRound(game) {
+function resetOrbitTarget(game, nowMs = Date.now()) {
+  game.target = {
+    id: `orbit_${nowMs.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    x: Math.round(8 + Math.random() * 84),
+    y: Math.round(10 + Math.random() * 80),
+  };
+  game.targetDuration = ORBIT_TARGET_MS;
+  game.targetExpiresAt = nowMs + ORBIT_TARGET_MS;
+}
+
+function configureGameRound(game, nowMs = Date.now()) {
   const index = Math.max(0, game.round - 1);
   if (game.mode === "chemistry") {
     const item = CHEMISTRY_ROUNDS[index % CHEMISTRY_ROUNDS.length];
     game.prompt = item.prompt;
     game.options = item.options;
+  } else if (game.mode === "vibe") {
+    const item = VIBE_ROUNDS[index % VIBE_ROUNDS.length];
+    game.prompt = item.prompt;
+    game.options = item.options;
   } else if (game.mode === "truth") {
     game.prompt = GAME_PROMPTS[index % GAME_PROMPTS.length];
+    game.options = [];
+  } else if (game.mode === "story") {
+    game.prompt = STORY_PROMPTS[index % STORY_PROMPTS.length];
     game.options = [];
   } else if (game.mode === "reaction") {
     game.prompt = "燈亮後立刻按下心動按鈕，太早按不算。";
     game.options = [];
-    game.targetAt ||= Date.now() + 2800;
+    game.targetAt ||= nowMs + 2800;
   } else if (game.mode === "doodle") {
     game.prompt = DOODLE_PROMPTS[index % DOODLE_PROMPTS.length];
     game.options = [];
-  } else {
-    game.prompt = "搶先點中共享光點，累積本房最高分。";
+  } else if (game.mode === "spark") {
+    game.prompt = "看見心動光點就搶，節奏像輕量 .io，適合語音房暖場。";
     game.options = [];
     if (!game.target?.id) resetSparkTarget(game);
+  } else {
+    game.prompt = "光點會自己亂跳，所有人一起追光搶分。";
+    game.options = [];
+    const expired = !game.target?.id || !game.targetExpiresAt || nowMs >= game.targetExpiresAt;
+    if (expired) {
+      resetOrbitTarget(game, nowMs);
+      game.updatedAt = new Date(nowMs).toISOString();
+    }
   }
 }
 
@@ -310,8 +356,8 @@ function addGameAnswer(state, payload, now) {
   if (!sessionId || !answer) return;
 
   const game = roomGame(state, roomId);
-  if (game.mode === "chemistry" && !game.options.includes(answer)) return;
-  if (!["chemistry", "truth"].includes(game.mode)) return;
+  if (["chemistry", "vibe"].includes(game.mode) && !game.options.includes(answer)) return;
+  if (!["chemistry", "vibe", "truth", "story"].includes(game.mode)) return;
   game.answers = game.answers.filter((item) => item.sessionId !== sessionId || item.round !== game.round);
   game.answers.push({
     id: `answer_${now.getTime().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
@@ -335,8 +381,10 @@ function selectGameMode(state, payload, now) {
   game.drawing = [];
   game.target = null;
   game.targetAt = mode === "reaction" ? now.getTime() + 2500 + Math.floor(Math.random() * 1800) : null;
+  game.targetExpiresAt = null;
+  game.targetDuration = null;
   game.updatedAt = now.toISOString();
-  configureGameRound(game);
+  configureGameRound(game, now.getTime());
 }
 
 function recordGameBuzz(state, payload, now) {
@@ -387,7 +435,8 @@ function recordSparkTap(state, payload, now) {
   const sessionId = text(payload.sessionId, "", 120);
   const game = roomGame(state, text(payload.roomId, DEFAULT_ROOM_ID, 80));
   const targetId = text(payload.targetId, "", 120);
-  if (!sessionId || game.mode !== "spark" || !targetId || targetId !== game.target?.id) return;
+  if (!sessionId || !["spark", "orbit"].includes(game.mode) || !targetId || targetId !== game.target?.id) return;
+  if (game.mode === "orbit" && now.getTime() >= Number(game.targetExpiresAt || 0)) return;
   const existing = game.scores.find((item) => item.sessionId === sessionId);
   if (existing) {
     existing.score = Number(existing.score || 0) + 1;
@@ -395,7 +444,8 @@ function recordSparkTap(state, payload, now) {
   } else {
     game.scores.push({ sessionId, name: text(payload.name, "訪客", 80), score: 1, updatedAt: now.toISOString() });
   }
-  resetSparkTarget(game, now.getTime());
+  if (game.mode === "spark") resetSparkTarget(game, now.getTime());
+  else resetOrbitTarget(game, now.getTime());
   game.updatedAt = now.toISOString();
 }
 
@@ -405,10 +455,13 @@ function nextGameRound(state, payload, now) {
   game.round += 1;
   game.answers = [];
   game.drawing = [];
-  if (["reaction", "spark"].includes(game.mode)) game.scores = [];
+  if (["reaction", "spark", "orbit"].includes(game.mode)) game.scores = [];
   game.targetAt = game.mode === "reaction" ? now.getTime() + 2500 + Math.floor(Math.random() * 1800) : null;
+  game.targetExpiresAt = null;
+  game.targetDuration = null;
   if (game.mode === "spark") resetSparkTarget(game, now.getTime());
-  configureGameRound(game);
+  if (game.mode === "orbit") resetOrbitTarget(game, now.getTime());
+  configureGameRound(game, now.getTime());
   game.updatedAt = now.toISOString();
 }
 
