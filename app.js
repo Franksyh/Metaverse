@@ -1282,6 +1282,7 @@ function applyRealtimeData(data) {
   const isEditingAnswer = document.activeElement?.id === "partyAnswerInput";
   const gameChanged = previousGameUpdatedAt !== (state.liveGame?.updatedAt || "");
   if (state.activeView === "games" && gameChanged && !state.drawingActive && !isEditingAnswer) renderPartyGames();
+  if (state.activeView === "chat") renderChat();
   if (state.activeView === "growth") renderGrowth();
 }
 
@@ -1332,6 +1333,8 @@ async function inviteLiveMatch(toSessionId = "") {
 async function acceptLiveMatch(matchId) {
   await syncRealtime("match-accept", { matchId });
   showToast("已接受配對邀請，可以開始一對一聊天");
+  state.activeConversationId = `match:${matchId}`;
+  setView("chat");
 }
 
 async function sendGameAnswer(answer) {
@@ -1379,6 +1382,92 @@ function currentGameAnswer(game) {
 
 function currentRoundAnswers(game) {
   return (game.answers || []).filter((answer) => answer.round === game.round);
+}
+
+function formatLiveMessageTime(value) {
+  const at = Date.parse(value || "");
+  if (!Number.isFinite(at)) return currentTime();
+  return new Date(at).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+}
+
+function liveSharedMessages() {
+  return (state.liveMessages || []).filter((message) => !message.toSessionId);
+}
+
+function currentUserAcceptedMatches() {
+  return (state.liveMatches || []).filter(
+    (match) =>
+      match.status === "accepted" &&
+      (match.fromSessionId === state.sessionId || match.toSessionId === state.sessionId),
+  );
+}
+
+function matchPeerDetails(match) {
+  const peerSessionId = match.fromSessionId === state.sessionId ? match.toSessionId : match.fromSessionId;
+  const peerParticipant = state.liveParticipants.find((participant) => participant.sessionId === peerSessionId);
+  return {
+    peerSessionId,
+    name: peerParticipant?.name || (match.fromSessionId === state.sessionId ? match.toName : match.fromName) || "已配對對象",
+    photo: peerParticipant?.photo || userProfile.photo,
+    subtitle: peerParticipant ? `${deviceLabel(peerParticipant.device)} · 真人即時聊天` : "已配對成功 · 真人即時聊天",
+  };
+}
+
+function messageBelongsToMatch(message, match) {
+  if (message.matchId && message.matchId === match.id) return true;
+  const members = new Set([match.fromSessionId, match.toSessionId]);
+  return Boolean(message.toSessionId) && members.has(message.sessionId) && members.has(message.toSessionId);
+}
+
+function liveConversationItems() {
+  const room = roomById(state.currentRoomId);
+  const roomMessages = liveSharedMessages().map((message) => ({
+    id: message.id,
+    from: message.name,
+    time: formatLiveMessageTime(message.at),
+    text: message.text,
+    mine: message.sessionId === state.sessionId,
+  }));
+  const items = [
+    {
+      id: `room:${state.currentRoomId}`,
+      type: "room",
+      title: room.title,
+      subtitle: `${state.liveParticipants.length} 人在線 · 房內共享聊天`,
+      img: room.cover,
+      unread: 0,
+      messages: roomMessages,
+    },
+  ];
+  currentUserAcceptedMatches().forEach((match) => {
+    const peer = matchPeerDetails(match);
+    items.push({
+      id: `match:${match.id}`,
+      type: "match",
+      matchId: match.id,
+      peerSessionId: peer.peerSessionId,
+      title: peer.name,
+      subtitle: peer.subtitle,
+      img: peer.photo,
+      unread: 0,
+      messages: (state.liveMessages || [])
+        .filter((message) => messageBelongsToMatch(message, match))
+        .map((message) => ({
+          id: message.id,
+          from: message.name,
+          time: formatLiveMessageTime(message.at),
+          text: message.text,
+          mine: message.sessionId === state.sessionId,
+        })),
+    });
+  });
+  return items;
+}
+
+function openMatchChat(matchId) {
+  if (!matchId) return;
+  state.activeConversationId = `match:${matchId}`;
+  setView("chat");
 }
 
 function participantNameForSession(sessionId) {
@@ -2261,10 +2350,11 @@ function renderMultiplayerPanel() {
   const room = roomById(state.currentRoomId);
   const isConnected = state.liveStatus === "connected";
   const participants = state.liveParticipants;
-  const messages = state.liveMessages;
+  const messages = liveSharedMessages();
   const voiceParticipants = participants.filter((participant) => participant.voice?.joined);
   const directVoicePeers = state.voicePeerIds;
   const matches = state.liveMatches;
+  const acceptedMatches = currentUserAcceptedMatches();
   const game = state.liveGame || { round: 1, prompt: "用一句話形容你今天的心情。", answers: [] };
   const lastSync = state.liveLastSyncAt
     ? new Date(state.liveLastSyncAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })
@@ -2445,7 +2535,9 @@ function renderMultiplayerPanel() {
                         ${
                           canAccept
                             ? `<button class="mini-action" type="button" data-accept-match="${escapeHtml(match.id)}">接受</button>`
-                            : ""
+                            : match.status === "accepted" && (match.fromSessionId === state.sessionId || match.toSessionId === state.sessionId)
+                              ? `<button class="mini-action" type="button" data-open-match-chat="${escapeHtml(match.id)}">聊天</button>`
+                              : ""
                         }
                       </article>
                     `;
@@ -2454,6 +2546,20 @@ function renderMultiplayerPanel() {
               : `<span class="empty-live-note">目前沒有配對邀請。可以對在線真人按「配對」。</span>`
           }
         </div>
+        ${
+          acceptedMatches.length
+            ? `
+              <div class="voice-direct-peer-list">
+                ${acceptedMatches
+                  .map((match) => {
+                    const peer = matchPeerDetails(match);
+                    return `<button class="mini-action" type="button" data-open-match-chat="${escapeHtml(match.id)}">${escapeHtml(peer.name)}</button>`;
+                  })
+                  .join("")}
+              </div>
+            `
+            : ""
+        }
       </section>
       <section class="live-game-card">
         <div class="sub-panel-title">
@@ -2481,6 +2587,9 @@ function renderMultiplayerPanel() {
   });
   $$("[data-accept-match]").forEach((button) => {
     button.addEventListener("click", () => acceptLiveMatch(button.dataset.acceptMatch));
+  });
+  $$("[data-open-match-chat]").forEach((button) => {
+    button.addEventListener("click", () => openMatchChat(button.dataset.openMatchChat));
   });
   $("#liveMessageForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -3458,6 +3567,25 @@ function nextProfile(message) {
 }
 
 function renderChat() {
+  const conversations = liveConversationItems();
+  if (!conversations.length) {
+    $("#conversationList").innerHTML = "";
+    $("#chatHeader").innerHTML = `
+      <div class="chat-person">
+        <img src="${userProfile.photo}" alt="${userProfile.name}" />
+        <div>
+          <strong>真人聊天室</strong>
+          <span>先進入同房並完成配對</span>
+        </div>
+      </div>
+    `;
+    $("#messageList").innerHTML = `<article class="message"><div class="message-meta"><strong>系統</strong><span>${currentTime()}</span></div><p>到「真人多人互動房」邀請或接受配對後，這裡就會變成真人即時聊天。</p></article>`;
+    syncIcons();
+    return;
+  }
+  if (!conversations.some((conversation) => conversation.id === state.activeConversationId)) {
+    state.activeConversationId = conversations[0].id;
+  }
   $("#conversationList").innerHTML = conversations
     .map(
       (conversation) => `
@@ -3477,8 +3605,6 @@ function renderChat() {
   $$("[data-conversation]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeConversationId = button.dataset.conversation;
-      const conversation = conversations.find((item) => item.id === state.activeConversationId);
-      if (conversation) conversation.unread = 0;
       renderChat();
     });
   });
@@ -3494,45 +3620,46 @@ function renderChat() {
     </div>
     <button class="ghost-action" type="button">
       <i data-lucide="${active.type === "room" ? "radio" : "phone"}"></i>
-      <span>${active.type === "room" ? "進房" : "語音"}</span>
+      <span>${active.type === "room" ? "房內共享" : "配對私訊"}</span>
     </button>
   `;
 
-  $("#messageList").innerHTML = active.messages
-    .map(
-      (message) => `
-        <article class="message ${message.from === "Frank" ? "mine" : ""}">
-          <div class="message-meta">
-            <strong>${message.from}</strong>
-            <span>${message.time}</span>
-          </div>
-          <p>${message.text}</p>
-        </article>
-      `,
-    )
-    .join("");
+  $("#messageList").innerHTML = active.messages.length
+    ? active.messages
+        .map(
+          (message) => `
+            <article class="message ${message.mine ? "mine" : ""}">
+              <div class="message-meta">
+                <strong>${message.from}</strong>
+                <span>${message.time}</span>
+              </div>
+              <p>${message.text}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : `<article class="message"><div class="message-meta"><strong>系統</strong><span>${currentTime()}</span></div><p>${active.type === "room" ? "這裡會顯示房內所有人共享訊息。" : "這裡會顯示你和配對對象的私訊內容。"}</p></article>`;
   $("#messageList").scrollTop = $("#messageList").scrollHeight;
+  const input = $("#chatInput");
+  if (input) {
+    input.placeholder = active.type === "room" ? "輸入房內共享訊息" : `傳訊息給 ${active.title}`;
+  }
   syncIcons();
 }
 
-function sendMessage(text) {
-  const active = conversations.find((conversation) => conversation.id === state.activeConversationId);
-  if (!active || !text.trim()) return;
-  active.messages.push({ from: "Frank", time: currentTime(), text: text.trim() });
-  renderChat();
-  scheduleSave();
-  window.setTimeout(() => {
-    const replies = active.type === "room"
-      ? ["這題很可以，等等也丟到房間一起聊。", "我想聽更多，這個方向滿有趣。", "有人也有類似經驗嗎？"]
-      : ["我懂，這個答案有加分。", "那我們可以從這個安排第一次語音。", "我也喜歡這種自然的節奏。"];
-    active.messages.push({
-      from: active.type === "room" ? active.title : active.title,
-      time: currentTime(),
-      text: replies[Math.floor(Math.random() * replies.length)],
-    });
-    renderChat();
-    scheduleSave();
-  }, 700);
+async function sendMessage(text) {
+  const active = liveConversationItems().find((conversation) => conversation.id === state.activeConversationId);
+  const value = String(text || "").trim();
+  if (!active || !value) return;
+  if (active.type === "room") {
+    await sendLiveMessage(value);
+    return;
+  }
+  if (!active.peerSessionId || !active.matchId) {
+    showToast("這個聊天室還沒完成真人配對。");
+    return;
+  }
+  await syncRealtime("message", { text: value, toSessionId: active.peerSessionId, matchId: active.matchId });
 }
 
 function momentAuthor(moment) {

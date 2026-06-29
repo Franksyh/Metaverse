@@ -234,6 +234,8 @@ export function createInitialState() {
         id: "system-welcome",
         roomId: DEFAULT_ROOM_ID,
         sessionId: "system",
+        toSessionId: "",
+        matchId: "",
         name: "系統",
         text: "歡迎來到真人多人房間。你可以聊天、上麥、邀請配對，也可以一起玩破冰題。",
         device: "web",
@@ -684,7 +686,14 @@ function serializeGameForSession(game, participants, sessionId) {
 
 export function snapshot(state, roomId, sessionId = "", nowMs = Date.now()) {
   const participants = roomParticipants(state, roomId);
-  const messages = state.messages.filter((message) => message.roomId === roomId).slice(-60);
+  const messages = state.messages
+    .filter((message) => {
+      if (message.roomId !== roomId) return false;
+      if (!message.toSessionId) return true;
+      if (!sessionId) return false;
+      return message.sessionId === sessionId || message.toSessionId === sessionId;
+    })
+    .slice(-80);
   const matches = state.matches.filter((match) => match.roomId === roomId).slice(-20);
   const game = serializeGameForSession(roomGame(state, roomId, nowMs), participants, sessionId);
   return {
@@ -735,10 +744,27 @@ function addMessage(state, payload, now) {
   const roomId = text(payload.roomId, DEFAULT_ROOM_ID, 80);
   const message = text(payload.text, "", 240);
   if (!sessionId || !message) return;
+  const toSessionId = text(payload.toSessionId, "", 120);
+  const matchId = text(payload.matchId, "", 120);
+  if (toSessionId) {
+    const acceptedMatch = state.matches.find(
+      (match) =>
+        match.roomId === roomId &&
+        match.status === "accepted" &&
+        (
+          (match.fromSessionId === sessionId && match.toSessionId === toSessionId) ||
+          (match.fromSessionId === toSessionId && match.toSessionId === sessionId)
+        ) &&
+        (!matchId || match.id === matchId),
+    );
+    if (!acceptedMatch) return;
+  }
   state.messages.push({
     id: uniqueId("msg", now.getTime()),
     roomId,
     sessionId,
+    toSessionId,
+    matchId,
     name: text(payload.name, "訪客", 80),
     text: message,
     device: getDevice(payload.device),
