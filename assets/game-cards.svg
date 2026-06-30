@@ -1,0 +1,35 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="40" fill="#231B12"/>
+  <rect x="36" y="36" width="1128" height="648" rx="28" fill="url(#felt)"/>
+  <circle cx="244" cy="160" r="124" fill="#6650A4" fill-opacity="0.18"/>
+  <circle cx="992" cy="580" r="136" fill="#F56F63" fill-opacity="0.16"/>
+  <g transform="translate(210 180) rotate(-12)">
+    <rect width="240" height="340" rx="24" fill="#FFFCF8"/>
+    <rect x="18" y="18" width="204" height="304" rx="18" stroke="#E3D8D0" stroke-width="2"/>
+    <path d="M56 76L82 108L56 140L30 108L56 76Z" fill="#D94E43"/>
+    <path d="M184 208L210 240L184 272L158 240L184 208Z" fill="#D94E43"/>
+    <text x="42" y="56" fill="#D94E43" font-family="Arial, sans-serif" font-size="42" font-weight="700">A</text>
+    <text x="166" y="306" fill="#D94E43" font-family="Arial, sans-serif" font-size="42" font-weight="700">A</text>
+  </g>
+  <g transform="translate(480 150) rotate(4)">
+    <rect width="240" height="340" rx="24" fill="#FFFCF8"/>
+    <rect x="18" y="18" width="204" height="304" rx="18" stroke="#E3D8D0" stroke-width="2"/>
+    <path d="M122 88C146 52 206 86 164 138C154 150 140 166 122 186C104 166 90 150 80 138C38 86 98 52 122 88Z" fill="#F56F63"/>
+    <text x="40" y="58" fill="#F56F63" font-family="Arial, sans-serif" font-size="42" font-weight="700">Q</text>
+    <text x="162" y="304" fill="#F56F63" font-family="Arial, sans-serif" font-size="42" font-weight="700">Q</text>
+  </g>
+  <g transform="translate(764 194) rotate(16)">
+    <rect width="240" height="340" rx="24" fill="#FFFCF8"/>
+    <rect x="18" y="18" width="204" height="304" rx="18" stroke="#E3D8D0" stroke-width="2"/>
+    <path d="M116 78L144 128H88L116 78Z" fill="#08A39A"/>
+    <path d="M116 160L152 222H80L116 160Z" fill="#08A39A"/>
+    <text x="40" y="58" fill="#08A39A" font-family="Arial, sans-serif" font-size="42" font-weight="700">7</text>
+    <text x="168" y="304" fill="#08A39A" font-family="Arial, sans-serif" font-size="42" font-weight="700">7</text>
+  </g>
+  <defs>
+    <linearGradient id="felt" x1="90" y1="88" x2="1088" y2="650" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#27495A"/>
+      <stop offset="1" stop-color="#102F3D"/>
+    </linearGradient>
+  </defs>
+</svg>

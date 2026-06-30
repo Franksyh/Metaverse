@@ -291,6 +291,111 @@ const partyGameCatalog = {
   },
 };
 
+const partyVisualPresets = {
+  social: {
+    cover: "assets/game-party-lobby.svg",
+    accent: "#ff7a6b",
+    accentSoft: "rgba(255, 122, 107, 0.18)",
+    badge: "SOCIAL",
+  },
+  arcade: {
+    cover: "assets/game-party-lobby.svg",
+    accent: "#4d86ff",
+    accentSoft: "rgba(77, 134, 255, 0.18)",
+    badge: "ARCADE",
+  },
+  dice: {
+    cover: "assets/game-dice.svg",
+    accent: "#ff9447",
+    accentSoft: "rgba(255, 148, 71, 0.2)",
+    badge: "DICE",
+  },
+  cards: {
+    cover: "assets/game-cards.svg",
+    accent: "#ff5a8f",
+    accentSoft: "rgba(255, 90, 143, 0.18)",
+    badge: "CARDS",
+  },
+  mahjong: {
+    cover: "assets/game-mahjong.svg",
+    accent: "#1fc8a0",
+    accentSoft: "rgba(31, 200, 160, 0.18)",
+    badge: "MAHJONG",
+  },
+  casino: {
+    cover: "assets/game-roulette.svg",
+    accent: "#ffd166",
+    accentSoft: "rgba(255, 209, 102, 0.22)",
+    badge: "CASINO",
+  },
+  slots: {
+    cover: "assets/game-slots.svg",
+    accent: "#9c6bff",
+    accentSoft: "rgba(156, 107, 255, 0.2)",
+    badge: "777",
+  },
+  tabletop: {
+    cover: "assets/game-board.svg",
+    accent: "#2dbdb2",
+    accentSoft: "rgba(45, 189, 178, 0.18)",
+    badge: "TABLETOP",
+  },
+};
+
+const partyGameVisuals = {
+  chemistry: partyVisualPresets.social,
+  vibe: partyVisualPresets.social,
+  truth: partyVisualPresets.social,
+  story: partyVisualPresets.social,
+  reaction: partyVisualPresets.arcade,
+  doodle: partyVisualPresets.social,
+  spark: partyVisualPresets.arcade,
+  orbit: partyVisualPresets.arcade,
+  liar: partyVisualPresets.dice,
+  highroll: partyVisualPresets.dice,
+  rushdice: partyVisualPresets.dice,
+  highcard: partyVisualPresets.cards,
+  oldmaid: partyVisualPresets.cards,
+  texas: partyVisualPresets.cards,
+  rummy: partyVisualPresets.cards,
+  mahjong: partyVisualPresets.mahjong,
+  roulette: partyVisualPresets.casino,
+  slots: partyVisualPresets.slots,
+  uno: partyVisualPresets.tabletop,
+  monopoly: partyVisualPresets.tabletop,
+  memory: partyVisualPresets.tabletop,
+  quiz: partyVisualPresets.tabletop,
+};
+
+function gameVisualForMode(mode) {
+  return partyGameVisuals[mode] || partyVisualPresets.social;
+}
+
+function renderPartyGameHero(mode, game) {
+  const meta = partyGameCatalog[mode] || partyGameCatalog.chemistry;
+  const visual = gameVisualForMode(mode);
+  const participantCount = Array.isArray(state.liveParticipants) ? state.liveParticipants.length : 0;
+  const roomId = escapeHtml(state.currentRoomId || "public-room");
+  return `
+    <div class="party-game-hero">
+      <div class="party-game-hero-media">
+        <img class="party-game-hero-image" src="${visual.cover}" alt="${escapeHtml(meta.name)} cover art" />
+        <span class="party-game-hero-badge">${visual.badge}</span>
+      </div>
+      <div class="party-game-hero-copy">
+        <p class="party-game-kicker">REMOTE PARTY ROOM</p>
+        <h4>${escapeHtml(meta.name)}</h4>
+        <p>${escapeHtml(meta.description)}</p>
+        <div class="party-game-meta">
+          <span>ROOM ${roomId}</span>
+          <span>${participantCount} PLAYERS</span>
+          <span>ROUND ${Number(game.round || 1)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 const userProfile = {
   name: "Frank",
   age: 30,
@@ -316,6 +421,9 @@ const userProfile = {
     id: false,
   },
 };
+
+const DEFAULT_PROFILE_PHOTO = userProfile.photo;
+const DEFAULT_PROFILE_INTERESTS = [...userProfile.interests];
 
 const defaultDiscoverFilters = {
   city: "全部",
@@ -2288,7 +2396,7 @@ function renderPartyScoreboard(game) {
   `;
 }
 
-function renderPartyGames() {
+function renderPartyGamesLegacy() {
   const arena = $("#partyGameArena");
   if (!arena) return;
   window.clearInterval(state.reactionUiTimer);
@@ -2359,6 +2467,160 @@ function renderPartyGames() {
     triggerGameFeedback("send", button);
     submitPartyAnswer(button.dataset.partyAnswer);
   }));
+  $$("[data-game-move]").forEach((button) =>
+    button.addEventListener("click", () => {
+      triggerGameFeedback(feedbackKindForMove(button.dataset.gameMove), button);
+      const extra = {};
+      if (button.dataset.card) extra.card = button.dataset.card;
+      if (button.dataset.bet) extra.bet = button.dataset.bet;
+      if (button.dataset.count) extra.count = Number(button.dataset.count);
+      if (button.dataset.face) extra.face = Number(button.dataset.face);
+      if (button.dataset.index !== undefined) extra.index = Number(button.dataset.index);
+      submitGameMove(button.dataset.gameMove, extra);
+    }),
+  );
+  $("#partyAnswerForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#partyAnswerInput");
+    triggerGameFeedback("send", input);
+    submitPartyAnswer(input.value);
+    input.value = "";
+  });
+  $("#nextPartyRoundBtn")?.addEventListener("click", (event) => {
+    triggerGameFeedback("mode", event.currentTarget);
+    nextLiveGameRound();
+  });
+  $("#sparkTarget")?.addEventListener("click", (event) => {
+    event.currentTarget.disabled = true;
+    triggerGameFeedback("hit", event.currentTarget);
+    syncRealtime("game-tap", { targetId: event.currentTarget.dataset.targetId });
+  });
+  $("#orbitTarget")?.addEventListener("click", (event) => {
+    event.currentTarget.dataset.pending = "true";
+    event.currentTarget.disabled = true;
+    triggerGameFeedback("hit", event.currentTarget);
+    syncRealtime("game-tap", { targetId: event.currentTarget.dataset.targetId });
+  });
+  $("#toggleSoundBtn")?.addEventListener("click", (event) => {
+    state.soundEnabled = !state.soundEnabled;
+    if (!state.soundEnabled) stopGameMusic();
+    else syncGameMusic();
+    scheduleSave();
+    triggerGameFeedback("tap", event.currentTarget);
+    renderPartyGames();
+  });
+  $("#toggleMusicBtn")?.addEventListener("click", (event) => {
+    state.musicEnabled = !state.musicEnabled;
+    syncGameMusic();
+    scheduleSave();
+    triggerGameFeedback("tap", event.currentTarget);
+    renderPartyGames();
+  });
+  if (mode === "reaction") wireReactionGame(game);
+  if (mode === "doodle") wireDoodleBoard(game);
+  if (mode === "orbit") wireOrbitGame(game);
+  syncGameMusic();
+  syncIcons();
+}
+
+function renderPartyGames() {
+  const arena = $("#partyGameArena");
+  if (!arena) return;
+  window.clearInterval(state.reactionUiTimer);
+  state.reactionUiTimer = null;
+
+  const game = state.liveGame || {
+    mode: "chemistry",
+    round: 1,
+    prompt: "Start the party",
+    options: [],
+    answers: [],
+    scores: [],
+    drawing: [],
+  };
+  const mode = partyGameCatalog[game.mode] ? game.mode : "chemistry";
+  const active = partyGameCatalog[mode];
+  const visual = gameVisualForMode(mode);
+  const stageRenderer = {
+    chemistry: renderChemistryGame,
+    vibe: renderVibeGame,
+    truth: renderTruthGame,
+    story: renderStoryGame,
+    reaction: renderReactionGame,
+    doodle: renderDoodleGame,
+    spark: renderSparkGame,
+    orbit: renderOrbitGame,
+    liar: renderLiarGame,
+    highroll: renderHighRollGame,
+    rushdice: renderRushDiceGame,
+    highcard: renderHighCardGame,
+    oldmaid: renderOldMaidGame,
+    texas: renderTexasGame,
+    rummy: renderRummyGame,
+    mahjong: renderMahjongGame,
+    roulette: renderRouletteGame,
+    slots: renderSlotsGame,
+    uno: renderUnoGame,
+    monopoly: renderMonopolyGame,
+    memory: renderMemoryGame,
+    quiz: renderQuizGame,
+  }[mode];
+  const stage = stageRenderer(game);
+
+  arena.innerHTML = `
+    <div class="party-game-intro">
+      <div>
+        <h3>Party Arcade</h3>
+        <p>Illustrated game covers, a live stage banner, and remote-ready rooms for social games, casino tables, and voice hangouts.</p>
+      </div>
+      <div class="party-intro-tools">
+        <span class="party-room-chip"><i data-lucide="users-round"></i>${escapeHtml(state.currentRoomId)} · ${state.liveParticipants.length} online</span>
+        <button class="ghost-action" type="button" id="toggleSoundBtn"><i data-lucide="${state.soundEnabled ? "volume-2" : "volume-x"}"></i><span>${state.soundEnabled ? "Sound on" : "Sound off"}</span></button>
+        <button class="ghost-action" type="button" id="toggleMusicBtn"><i data-lucide="${state.musicEnabled ? "music-4" : "music-2"}"></i><span>${state.musicEnabled ? "Music on" : "Music off"}</span></button>
+      </div>
+    </div>
+    <div class="party-game-library">
+      ${Object.entries(partyGameCatalog)
+        .map(([id, item]) => {
+          const itemVisual = gameVisualForMode(id);
+          return `
+            <button class="party-game-mode ${id === mode ? "is-active" : ""}" type="button" data-party-mode="${id}" style="--game-accent:${itemVisual.accent}; --game-accent-soft:${itemVisual.accentSoft};" aria-label="Open ${escapeHtml(item.name)}">
+              <span class="party-game-media">
+                <img class="party-game-cover" src="${itemVisual.cover}" alt="${escapeHtml(item.name)} cover" loading="lazy" />
+                <span class="party-game-icon"><i data-lucide="${item.icon}"></i></span>
+              </span>
+              <span class="party-mode-copy">
+                <span class="party-mode-label">${itemVisual.badge}</span>
+                <strong>${item.name}</strong>
+                <small>${item.description}</small>
+              </span>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+    <div class="party-game-layout">
+      <section class="party-game-stage" style="--game-accent:${visual.accent}; --game-accent-soft:${visual.accentSoft};">
+        <div class="party-stage-head"><div><h3>${active.name}</h3><p>${active.description}</p></div><span class="party-round">ROUND ${Number(game.round || 1)}</span></div>
+        ${renderPartyGameHero(mode, game)}
+        ${stage}
+      </section>
+      ${renderPartyScoreboard(game)}
+    </div>
+  `;
+
+  $$('[data-party-mode]').forEach((button) =>
+    button.addEventListener("click", () => {
+      triggerGameFeedback("mode", button);
+      selectPartyGame(button.dataset.partyMode);
+    }),
+  );
+  $$('[data-party-answer]').forEach((button) =>
+    button.addEventListener("click", () => {
+      triggerGameFeedback("send", button);
+      submitPartyAnswer(button.dataset.partyAnswer);
+    }),
+  );
   $$("[data-game-move]").forEach((button) =>
     button.addEventListener("click", () => {
       triggerGameFeedback(feedbackKindForMove(button.dataset.gameMove), button);
@@ -2968,7 +3230,7 @@ function updateProfileCompletion() {
   if (bar) bar.style.width = `${completion}%`;
 }
 
-function renderProfileEditor() {
+function renderProfileEditorLegacy() {
   const completion = profileCompletion();
   $("#profileEditor").innerHTML = `
     <div class="panel-title">
@@ -3078,7 +3340,7 @@ function renderProfileEditor() {
   syncIcons();
 }
 
-function updateUserProfileFromField(event) {
+function updateUserProfileFromFieldLegacy(event) {
   const field = event.target.dataset.profileField;
   if (field === "interests") {
     userProfile.interests = event.target.value
@@ -3098,7 +3360,7 @@ function updateUserProfileFromField(event) {
   scheduleSave();
 }
 
-function handlePhotoUpload(event) {
+function handlePhotoUploadLegacy(event) {
   const [file] = event.target.files || [];
   if (!file) return;
   const reader = new FileReader();
@@ -3112,7 +3374,7 @@ function handlePhotoUpload(event) {
   reader.readAsDataURL(file);
 }
 
-function renderProfilePreview() {
+function renderProfilePreviewLegacy() {
   const trustScore = Object.values(userProfile.verifications).filter(Boolean).length * 25;
   $("#profilePreview").innerHTML = `
     <div class="preview-card">
@@ -3137,6 +3399,299 @@ function renderProfilePreview() {
         ["email", "Email"],
         ["selfie", "自拍"],
         ["id", "身分證"],
+      ]
+        .map(
+          ([key, label]) => `
+            <span class="${userProfile.verifications[key] ? "is-done" : ""}">
+              <i data-lucide="${userProfile.verifications[key] ? "badge-check" : "circle"}"></i>
+              ${label}
+            </span>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+  syncIcons();
+}
+
+function clampProfileNumber(value, min, max, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(numeric)));
+}
+
+function parseProfileInterestInput(value) {
+  return [...new Set(String(value || "")
+    .split(/[\n,，、/|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean))]
+    .slice(0, 8);
+}
+
+function normalizeUserProfile() {
+  userProfile.name = String(userProfile.name || "").trim().slice(0, 40) || "訪客";
+  userProfile.photo = String(userProfile.photo || "").trim() || DEFAULT_PROFILE_PHOTO;
+  userProfile.city = String(userProfile.city || "").trim().slice(0, 20) || "台北";
+  userProfile.occupation = String(userProfile.occupation || "").trim().slice(0, 40) || "自由工作者";
+  userProfile.education = String(userProfile.education || "").trim().slice(0, 20) || "大學";
+  userProfile.zodiac = String(userProfile.zodiac || "").trim().slice(0, 20) || "雙子座";
+  userProfile.genderPreference = String(userProfile.genderPreference || "").trim().slice(0, 10) || "不限";
+  userProfile.smoking = String(userProfile.smoking || "").trim().slice(0, 20) || "不抽菸";
+  userProfile.drinking = String(userProfile.drinking || "").trim().slice(0, 20) || "小酌";
+  userProfile.age = clampProfileNumber(userProfile.age, 18, 80, 30);
+  userProfile.height = clampProfileNumber(userProfile.height, 120, 230, 170);
+  userProfile.ageMin = clampProfileNumber(userProfile.ageMin, 18, 80, 24);
+  userProfile.ageMax = clampProfileNumber(userProfile.ageMax, 18, 80, 34);
+  userProfile.distanceMax = clampProfileNumber(userProfile.distanceMax, 1, 500, 25);
+  if (userProfile.ageMin > userProfile.ageMax) {
+    [userProfile.ageMin, userProfile.ageMax] = [userProfile.ageMax, userProfile.ageMin];
+  }
+  userProfile.bio = String(userProfile.bio || "").trim().slice(0, 400);
+  if (!userProfile.bio) {
+    userProfile.bio = "介紹一下你的個性、最近喜歡的生活，以及想認識什麼樣的人。";
+  }
+  userProfile.interests = Array.isArray(userProfile.interests) ? userProfile.interests : DEFAULT_PROFILE_INTERESTS;
+  userProfile.interests = parseProfileInterestInput(userProfile.interests.join("、"));
+  if (!userProfile.interests.length) {
+    userProfile.interests = [...DEFAULT_PROFILE_INTERESTS];
+  }
+  userProfile.visibility = userProfile.visibility !== false;
+  userProfile.verifications = {
+    phone: Boolean(userProfile.verifications?.phone),
+    email: Boolean(userProfile.verifications?.email),
+    selfie: Boolean(userProfile.verifications?.selfie),
+    id: Boolean(userProfile.verifications?.id),
+  };
+}
+
+function saveProfileChanges(showNotice = true) {
+  normalizeUserProfile();
+  syncProfileMini();
+  renderProfilePreview();
+  saveAppState();
+  if (state.currentRoomId) publishVoiceState("voice-update");
+  if (showNotice) showToast("個人檔案已儲存");
+}
+
+function renderProfileEditor() {
+  normalizeUserProfile();
+  const completion = profileCompletion();
+  const cityOptions = ["台北", "新北", "桃園", "新竹", "台中", "台南", "高雄", "其他"];
+  const educationOptions = ["高中", "專科", "大學", "研究所", "博士"];
+  const zodiacOptions = ["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"];
+  const preferenceOptions = ["不限", "女性", "男性"];
+  const smokingOptions = ["不抽菸", "偶爾", "會抽菸"];
+  const drinkingOptions = ["不喝酒", "小酌", "聚會喝", "常喝"];
+
+  $("#profileEditor").innerHTML = `
+    <div class="panel-title">
+      <i data-lucide="id-card"></i>
+      <h3>編輯個人檔案</h3>
+    </div>
+    <div class="profile-upload-row">
+      <img src="${escapeHtml(userProfile.photo)}" alt="${escapeHtml(userProfile.name)} 的預覽照片" />
+      <div>
+        <strong>${escapeHtml(userProfile.name)}</strong>
+        <span>${escapeHtml(userProfile.city)} · ${escapeHtml(userProfile.occupation)}</span>
+      </div>
+      <label class="ghost-action upload-action" for="photoUpload">
+        <i data-lucide="image-plus"></i>
+        <span>上傳照片</span>
+        <input id="photoUpload" type="file" accept="image/*" />
+      </label>
+    </div>
+    <div class="completion-card">
+      <div>
+        <span>檔案完整度</span>
+        <strong id="profileCompletionText">${completion}%</strong>
+      </div>
+      <div class="progress-track"><span id="profileCompletionBar" style="width: ${completion}%"></span></div>
+    </div>
+    <form id="profileEditorForm">
+      <div class="profile-form-grid">
+        <label>
+          <span>暱稱 / 姓名</span>
+          <input data-profile-field="name" value="${escapeHtml(userProfile.name)}" maxlength="40" placeholder="輸入你的名稱" />
+        </label>
+        <label>
+          <span>年齡</span>
+          <input data-profile-field="age" type="number" min="18" max="80" value="${userProfile.age}" />
+        </label>
+        <label>
+          <span>地區</span>
+          <input data-profile-field="city" list="profileCityOptions" value="${escapeHtml(userProfile.city)}" placeholder="輸入所在城市" />
+        </label>
+        <label>
+          <span>職業</span>
+          <input data-profile-field="occupation" value="${escapeHtml(userProfile.occupation)}" maxlength="40" placeholder="例如：設計師、工程師" />
+        </label>
+        <label>
+          <span>身高 (cm)</span>
+          <input data-profile-field="height" type="number" min="120" max="230" value="${userProfile.height}" />
+        </label>
+        <label>
+          <span>學歷</span>
+          <select data-profile-field="education">
+            ${educationOptions.map((item) => `<option ${item === userProfile.education ? "selected" : ""}>${item}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>星座</span>
+          <select data-profile-field="zodiac">
+            ${zodiacOptions.map((item) => `<option ${item === userProfile.zodiac ? "selected" : ""}>${item}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>想認識</span>
+          <select data-profile-field="genderPreference">
+            ${preferenceOptions.map((item) => `<option ${item === userProfile.genderPreference ? "selected" : ""}>${item}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>偏好年齡下限</span>
+          <input data-profile-field="ageMin" type="number" min="18" max="80" value="${userProfile.ageMin}" />
+        </label>
+        <label>
+          <span>偏好年齡上限</span>
+          <input data-profile-field="ageMax" type="number" min="18" max="80" value="${userProfile.ageMax}" />
+        </label>
+        <label>
+          <span>可接受距離 (km)</span>
+          <input data-profile-field="distanceMax" type="number" min="1" max="500" value="${userProfile.distanceMax}" />
+        </label>
+        <label>
+          <span>抽菸習慣</span>
+          <select data-profile-field="smoking">
+            ${smokingOptions.map((item) => `<option ${item === userProfile.smoking ? "selected" : ""}>${item}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>喝酒習慣</span>
+          <select data-profile-field="drinking">
+            ${drinkingOptions.map((item) => `<option ${item === userProfile.drinking ? "selected" : ""}>${item}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>照片網址</span>
+          <input data-profile-field="photo" type="url" value="${escapeHtml(userProfile.photo)}" placeholder="https://example.com/photo.jpg" />
+        </label>
+        <label class="full">
+          <span>興趣愛好</span>
+          <input data-profile-field="interests" value="${escapeHtml(userProfile.interests.join("、"))}" placeholder="例如：電影、旅行、桌遊、健身" />
+          <small class="profile-field-hint">可用頓號、逗號或換行分隔</small>
+        </label>
+        <label class="full">
+          <span>自我介紹</span>
+          <textarea data-profile-field="bio" rows="5" maxlength="400" placeholder="介紹你的個性、生活、興趣與期待">${escapeHtml(userProfile.bio)}</textarea>
+        </label>
+      </div>
+      <datalist id="profileCityOptions">
+        ${cityOptions.map((item) => `<option value="${item}"></option>`).join("")}
+      </datalist>
+      <label class="switch-row">
+        <input data-profile-field="visibility" type="checkbox" ${userProfile.visibility ? "checked" : ""} />
+        <span>公開我的檔案，讓其他用戶可以看到並配對我</span>
+      </label>
+      <div class="profile-editor-actions">
+        <button class="primary-action" type="submit">
+          <i data-lucide="save"></i>
+          <span>儲存個人檔案</span>
+        </button>
+        <button class="ghost-action" type="button" id="profileRefreshBtn">
+          <i data-lucide="refresh-cw"></i>
+          <span>重新整理欄位</span>
+        </button>
+      </div>
+    </form>
+  `;
+
+  $("#photoUpload")?.addEventListener("change", handlePhotoUpload);
+  $("#profileEditorForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveProfileChanges();
+  });
+  $("#profileRefreshBtn")?.addEventListener("click", () => {
+    normalizeUserProfile();
+    renderProfileEditor();
+    showToast("已重新載入目前資料");
+  });
+  $$("#profileEditor [data-profile-field]").forEach((field) => {
+    field.addEventListener("input", updateUserProfileFromField);
+    field.addEventListener("change", updateUserProfileFromField);
+  });
+
+  renderProfilePreview();
+  syncIcons();
+}
+
+function updateUserProfileFromField(event) {
+  const target = event.target;
+  const field = target.dataset.profileField;
+  if (!field) return;
+
+  if (field === "interests") {
+    userProfile.interests = parseProfileInterestInput(target.value);
+  } else if (field === "visibility") {
+    userProfile.visibility = target.checked;
+  } else if (target.type === "number") {
+    userProfile[field] = target.value === "" ? "" : Number(target.value);
+  } else if (field === "photo") {
+    userProfile.photo = String(target.value || "").trim() || DEFAULT_PROFILE_PHOTO;
+  } else {
+    userProfile[field] = target.value;
+  }
+
+  normalizeUserProfile();
+  syncProfileMini();
+  updateProfileCompletion();
+  renderProfilePreview();
+  scheduleSave();
+}
+
+function handlePhotoUpload(event) {
+  const [file] = event.target.files || [];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    userProfile.photo = reader.result;
+    normalizeUserProfile();
+    syncProfileMini();
+    renderProfileEditor();
+    saveProfileChanges(false);
+    showToast("照片已更新");
+  });
+  reader.readAsDataURL(file);
+}
+
+function renderProfilePreview() {
+  normalizeUserProfile();
+  const trustScore = Object.values(userProfile.verifications).filter(Boolean).length * 25;
+  $("#profilePreview").innerHTML = `
+    <div class="preview-card">
+      <img src="${escapeHtml(userProfile.photo)}" alt="${escapeHtml(userProfile.name)} 的個人卡片" />
+      <div class="preview-body">
+        <p class="eyebrow">${escapeHtml(userProfile.city)} · ${escapeHtml(userProfile.zodiac)} · ${escapeHtml(userProfile.occupation)}</p>
+        <h3>${escapeHtml(userProfile.name)}, ${userProfile.age}</h3>
+        <p>${escapeHtml(userProfile.bio)}</p>
+        <div class="profile-tags">
+          ${userProfile.interests.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
+        </div>
+        <div class="profile-stats">
+          <div class="stat"><span>身高</span><strong>${userProfile.height} cm</strong></div>
+          <div class="stat"><span>學歷</span><strong>${escapeHtml(userProfile.education)}</strong></div>
+          <div class="stat"><span>菸酒</span><strong>${escapeHtml(userProfile.smoking)} / ${escapeHtml(userProfile.drinking)}</strong></div>
+          <div class="stat"><span>偏好</span><strong>${userProfile.ageMin}-${userProfile.ageMax} 歲</strong></div>
+          <div class="stat"><span>距離</span><strong>${userProfile.distanceMax} km</strong></div>
+          <div class="stat"><span>驗證度</span><strong>${trustScore}%</strong></div>
+        </div>
+      </div>
+    </div>
+    <div class="verification-strip">
+      ${[
+        ["phone", "手機驗證"],
+        ["email", "Email 驗證"],
+        ["selfie", "自拍驗證"],
+        ["id", "證件驗證"],
       ]
         .map(
           ([key, label]) => `
@@ -4684,6 +5239,7 @@ function wireEvents() {
   $("#globalSearch").addEventListener("input", handleGlobalSearch);
 
   $("#saveProfileBtn").addEventListener("click", () => {
+    saveProfileChanges(false);
     renderProfileEditor();
     showToast("個人檔案已儲存");
   });

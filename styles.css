@@ -1490,15 +1490,70 @@ textarea {
 
 .party-game-mode {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: 108px minmax(0, 1fr);
+  align-items: center;
   gap: 10px;
-  min-height: 92px;
-  padding: 12px;
+  min-height: 108px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   color: var(--ink);
   background: var(--panel);
   text-align: left;
+  overflow: hidden;
+}
+
+.party-game-mode > .party-game-media:first-child {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 86px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+  background: linear-gradient(135deg, var(--game-accent-soft, rgba(8, 127, 123, 0.18)), rgba(255, 255, 255, 0.92));
+}
+
+.party-game-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.01);
+}
+
+.party-game-icon {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(14, 20, 31, 0.78);
+  box-shadow: 0 8px 18px rgba(14, 20, 31, 0.2);
+}
+
+.party-mode-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.party-mode-label {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--game-accent, var(--teal));
+  background: var(--game-accent-soft, rgba(8, 127, 123, 0.16));
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .party-game-mode > span:first-child {
@@ -1529,8 +1584,9 @@ textarea {
 
 .party-game-mode:hover,
 .party-game-mode.is-active {
-  border-color: var(--teal);
-  background: #f1faf7;
+  border-color: var(--game-accent, var(--teal));
+  background: linear-gradient(135deg, var(--game-accent-soft, rgba(8, 127, 123, 0.16)), #ffffff 72%);
+  box-shadow: 0 16px 32px rgba(14, 20, 31, 0.08);
 }
 
 .party-game-mode.is-active > span:first-child {
@@ -1551,6 +1607,77 @@ textarea {
 
 .party-game-stage {
   min-height: 420px;
+  background: linear-gradient(180deg, var(--game-accent-soft, rgba(8, 127, 123, 0.14)) 0%, #ffffff 34%);
+}
+
+.party-game-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid rgba(8, 127, 123, 0.12);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.party-game-hero-media {
+  position: relative;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+  min-height: 148px;
+}
+
+.party-game-hero-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.party-game-hero-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(14, 20, 31, 0.74);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.party-game-hero-copy {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+}
+
+.party-game-kicker {
+  color: var(--game-accent, var(--teal));
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.party-game-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.party-game-meta span {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(14, 20, 31, 0.08);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .party-stage-head {
@@ -2314,6 +2441,8 @@ textarea {
 }
 
 .profile-form-grid input,
+.profile-form-grid select,
+.profile-form-grid textarea,
 .filter-grid input,
 .composer-tools input {
   width: 100%;
@@ -2323,6 +2452,25 @@ textarea {
   border-radius: var(--radius);
   outline: 0;
   background: #ffffff;
+}
+
+.profile-form-grid textarea {
+  min-height: 120px;
+  padding: 12px;
+  resize: vertical;
+}
+
+.profile-field-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.profile-editor-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 .switch-row {
@@ -3608,12 +3756,17 @@ textarea {
   }
 
   .party-game-mode {
-    min-height: 78px;
+    grid-template-columns: 88px minmax(0, 1fr);
+    min-height: 92px;
   }
 
   .party-game-stage,
   .party-scoreboard {
     padding: 14px;
+  }
+
+  .party-game-hero {
+    grid-template-columns: 1fr;
   }
 
   .party-prompt {

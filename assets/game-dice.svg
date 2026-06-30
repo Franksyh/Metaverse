@@ -1,0 +1,27 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="40" fill="#0D241E"/>
+  <rect x="36" y="36" width="1128" height="648" rx="28" fill="url(#felt)"/>
+  <circle cx="224" cy="588" r="126" fill="#F56F63" fill-opacity="0.16"/>
+  <circle cx="996" cy="154" r="146" fill="#F0C84B" fill-opacity="0.18"/>
+  <rect x="190" y="168" width="304" height="304" rx="44" transform="rotate(-12 190 168)" fill="#FFF7F0"/>
+  <rect x="618" y="232" width="304" height="304" rx="44" transform="rotate(14 618 232)" fill="#FFF7F0"/>
+  <circle cx="292" cy="246" r="22" fill="#F56F63"/>
+  <circle cx="398" cy="328" r="22" fill="#F56F63"/>
+  <circle cx="260" cy="394" r="22" fill="#F56F63"/>
+  <circle cx="366" cy="476" r="22" fill="#F56F63"/>
+  <circle cx="324" cy="362" r="22" fill="#F56F63"/>
+  <circle cx="710" cy="330" r="22" fill="#08A39A"/>
+  <circle cx="820" cy="348" r="22" fill="#08A39A"/>
+  <circle cx="930" cy="366" r="22" fill="#08A39A"/>
+  <circle cx="682" cy="428" r="22" fill="#08A39A"/>
+  <circle cx="792" cy="446" r="22" fill="#08A39A"/>
+  <circle cx="902" cy="464" r="22" fill="#08A39A"/>
+  <path d="M154 122H1046" stroke="#F1FBF7" stroke-opacity="0.12" stroke-width="14" stroke-linecap="round"/>
+  <path d="M140 594H1060" stroke="#F1FBF7" stroke-opacity="0.12" stroke-width="14" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="felt" x1="112" y1="90" x2="1070" y2="644" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#173B32"/>
+      <stop offset="1" stop-color="#0F2B25"/>
+    </linearGradient>
+  </defs>
+</svg>
