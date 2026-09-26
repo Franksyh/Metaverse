@@ -1759,10 +1759,406 @@ function gameAnswerBySession(game, sessionId = state.sessionId) {
   return currentRoundAnswers(game).find((answer) => answer.sessionId === sessionId);
 }
 
+const cardSuitVisuals = {
+  S: { symbol: "&spades;", tone: "black" },
+  H: { symbol: "&hearts;", tone: "red" },
+  D: { symbol: "&diams;", tone: "red" },
+  C: { symbol: "&clubs;", tone: "black" },
+};
+
+const slotSymbolVisuals = {
+  Cherry: "&#127826;",
+  Bell: "&#128276;",
+  Heart: "&#10084;&#65039;",
+  Star: "&#11088;",
+  Seven: "7",
+};
+
+let activeDiceSceneCleanup = null;
+let rollActiveDiceScene = null;
+
+function playingCardVisual(item) {
+  const label = handItemLabel(item);
+  const unoMatch = typeof item === "string" ? label.match(/^([RYGB])(0|[1-9]|SKIP|D2)$/i) : null;
+  if (unoMatch) {
+    const colors = { R: "uno-red", Y: "uno-yellow", G: "uno-green", B: "uno-blue" };
+    return {
+      label,
+      rank: unoMatch[2].toUpperCase(),
+      symbol: "UNO",
+      tone: colors[unoMatch[1].toUpperCase()] || "uno-red",
+    };
+  }
+  const objectSuit = item && typeof item === "object" ? item.suit : "";
+  const objectRank = item && typeof item === "object" ? item.rank : "";
+  const standardMatch = label.match(/^(10|[2-9JQKA])([SHDC])$/i);
+  const suit = String(objectSuit || standardMatch?.[2] || "").toUpperCase();
+  const rawRank = objectRank || standardMatch?.[1] || label || "?";
+  const rank = { 11: "J", 12: "Q", 13: "K", 14: "A" }[rawRank] || String(rawRank);
+  const suitMeta = cardSuitVisuals[suit] || { symbol: "&#9733;", tone: label === "JK" ? "joker" : "black" };
+  return { label, rank, symbol: suitMeta.symbol, tone: suitMeta.tone };
+}
+
+function renderCardFaceContent(item) {
+  const card = playingCardVisual(item);
+  return `
+    <span class="playing-card-corner"><b>${escapeHtml(card.rank)}</b><i>${card.symbol}</i></span>
+    <span class="playing-card-center">${card.symbol}</span>
+    <span class="playing-card-corner is-bottom"><b>${escapeHtml(card.rank)}</b><i>${card.symbol}</i></span>
+  `;
+}
+
+function renderPlayingCard(item, options = {}) {
+  const card = playingCardVisual(item);
+  const hidden = Boolean(options.hidden);
+  return `
+    <span class="game-card is-${card.tone} ${hidden ? "is-card-back" : ""} ${options.className || ""}" aria-label="${hidden ? "Hidden playing card" : escapeHtml(card.label)}">
+      ${hidden ? `<span class="card-back-pattern"></span>` : renderCardFaceContent(item)}
+    </span>
+  `;
+}
+
+function renderDiePips(value) {
+  const visiblePips = {
+    1: [4],
+    2: [0, 8],
+    3: [0, 4, 8],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8],
+  }[Number(value)] || [4];
+  return Array.from({ length: 9 }, (_, index) => `<i class="${visiblePips.includes(index) ? "is-visible" : ""}"></i>`).join("");
+}
+
+function renderMiniDie(value) {
+  const safeValue = Math.max(1, Math.min(6, Number(value) || 1));
+  return `<span class="mini-die" aria-label="Die ${safeValue}">${renderDiePips(safeValue)}</span>`;
+}
+
+function renderCssDie(value, index = 0) {
+  const safeValue = Math.max(1, Math.min(6, Number(value) || 1));
+  const opposite = 7 - safeValue;
+  const adjacent = [1, 2, 3, 4, 5, 6].filter((face) => face !== safeValue && face !== opposite);
+  const top = adjacent[0];
+  const right = adjacent.find((face) => face !== 7 - top) || adjacent[1];
+  const faces = {
+    front: safeValue,
+    back: opposite,
+    top,
+    bottom: 7 - top,
+    right,
+    left: 7 - right,
+  };
+  return `
+    <span class="css-die-scene" style="--roll-delay:${index * 90}ms" aria-label="3D die ${safeValue}">
+      <span class="css-die-cube">
+        ${Object.entries(faces)
+          .map(([side, face]) => `<span class="css-die-face is-${side}">${renderDiePips(face)}</span>`)
+          .join("")}
+      </span>
+    </span>
+  `;
+}
+
+function renderMahjongTile(item) {
+  const label = handItemLabel(item);
+  const suit = item && typeof item === "object" ? item.suit : "";
+  const rank = item && typeof item === "object" ? item.rank : label.slice(0, 1);
+  const suitSymbol = suit === "dot" ? "&#9679;" : suit === "bam" ? "&#10072;" : "&#20013;";
+  return `
+    <span class="mahjong-tile suit-${escapeHtml(suit || "honor")}" aria-label="${escapeHtml(label)}">
+      <b>${escapeHtml(String(rank || "?"))}</b>
+      <i>${suitSymbol}</i>
+    </span>
+  `;
+}
+
 function renderTokenList(items, className = "card-chip") {
+  if (className.includes("dice-chip")) return items.map((item) => renderMiniDie(item)).join("");
+  if (className.includes("tile-chip")) return items.map((item) => renderMahjongTile(item)).join("");
+  if (className.includes("card-chip")) return items.map((item) => renderPlayingCard(item)).join("");
   return items
     .map((item) => `<span class="${className} ${handItemTone(item) ? `is-${handItemTone(item)}` : ""}">${escapeHtml(handItemLabel(item))}</span>`)
     .join("");
+}
+
+function diceValuesFromGame(game, count = 2) {
+  const answer = gameAnswerBySession(game)?.answer || "";
+  const parsed = (String(answer).match(/[1-6]/g) || []).slice(0, count).map(Number);
+  const hand = Array.isArray(game.myHand) ? game.myHand.map(Number).filter((value) => value >= 1 && value <= 6) : [];
+  const source = hand.length ? hand : parsed;
+  const seed = Number(game.round || 1) + String(state.sessionId || "player").length;
+  return Array.from({ length: count }, (_, index) => source[index] || ((seed + index * 3) % 6) + 1);
+}
+
+function slotSymbolsFromGame(game) {
+  const answer = gameAnswerBySession(game)?.answer || "";
+  const matches = String(answer).match(/Cherry|Bell|Heart|Star|Seven/g) || [];
+  return matches.length >= 3 ? matches.slice(0, 3) : ["Cherry", "Seven", "Star"];
+}
+
+function renderDiceGameVisual(game, count = 2) {
+  const values = diceValuesFromGame(game, count);
+  return `
+    <div class="live-game-visual dice-game-visual" aria-label="Interactive 3D dice table">
+      <div class="game-visual-label"><span>LIVE 3D TABLE</span><strong>${values.join(" + ")}</strong></div>
+      <div class="three-dice-host" id="threeDiceScene" data-dice-values="${values.join(",")}">
+        <div class="css-dice-fallback">${values.map((value, index) => renderCssDie(value, index)).join("")}</div>
+      </div>
+      <div class="table-light table-light-one"></div><div class="table-light table-light-two"></div>
+    </div>
+  `;
+}
+
+function renderCardGameVisual(mode, game) {
+  const mine = Array.isArray(game.myHand) ? game.myHand : [];
+  const community = Array.isArray(game.communityCards) ? game.communityCards : [];
+  const cards = mode === "texas" ? community : mine;
+  const visibleCards = cards.length ? cards.slice(0, mode === "texas" ? 5 : 7) : [];
+  return `
+    <div class="live-game-visual card-game-visual" aria-label="3D playing card table">
+      <div class="card-table-mark">PAIR ROOM</div>
+      <div class="card-deck-stack">${renderPlayingCard("A", { hidden: true })}${renderPlayingCard("A", { hidden: true })}</div>
+      <div class="card-table-hand">
+        ${visibleCards.length ? visibleCards.map((card, index) => renderPlayingCard(card, { className: `deal-${Math.min(index + 1, 7)}` })).join("") : Array.from({ length: 3 }, (_, index) => renderPlayingCard("A", { hidden: true, className: `deal-${index + 1}` })).join("")}
+      </div>
+      <span class="poker-chip chip-one"></span><span class="poker-chip chip-two"></span><span class="poker-chip chip-three"></span>
+    </div>
+  `;
+}
+
+function renderMahjongGameVisual(game) {
+  const tiles = Array.isArray(game.myHand) ? game.myHand.slice(0, 14) : [];
+  return `
+    <div class="live-game-visual mahjong-game-visual" aria-label="3D mahjong table">
+      <div class="mahjong-wall" aria-hidden="true">${Array.from({ length: 12 }, () => '<span class="mahjong-wall-tile"></span>').join("")}</div>
+      <div class="mahjong-rack">${tiles.length ? tiles.map(renderMahjongTile).join("") : Array.from({ length: 9 }, (_, index) => renderMahjongTile({ rank: (index % 9) + 1, suit: ["dot", "bam", "char"][index % 3], label: String(index + 1) })).join("")}</div>
+    </div>
+  `;
+}
+
+function renderRouletteGameVisual(game) {
+  const result = Number(game.spinResult?.number ?? 17);
+  const angle = Math.round((result / 37) * 360);
+  return `
+    <div class="live-game-visual roulette-game-visual" aria-label="Animated roulette wheel">
+      <div class="roulette-cabinet">
+        <div class="roulette-visual-wheel" style="--ball-angle:${angle}deg">
+          <span class="roulette-ball"></span>
+          <span class="roulette-hub"><b>${result}</b></span>
+        </div>
+      </div>
+      <div class="roulette-result"><span>RESULT</span><strong>${result}</strong></div>
+    </div>
+  `;
+}
+
+function renderSlotsGameVisual(game) {
+  const symbols = slotSymbolsFromGame(game);
+  return `
+    <div class="live-game-visual slots-game-visual" aria-label="Animated slot machine">
+      <div class="slot-machine">
+        <div class="slot-marquee"><span>&#9733;</span><strong>PAIR 777</strong><span>&#9733;</span></div>
+        <div class="slot-reels">${symbols.map((symbol, index) => `<span class="slot-reel reel-${index + 1}"><b>${slotSymbolVisuals[symbol] || symbol}</b></span>`).join("")}</div>
+        <div class="slot-lights">${Array.from({ length: 10 }, () => "<i></i>").join("")}</div>
+      </div>
+      <span class="slot-lever"><i></i></span>
+    </div>
+  `;
+}
+
+function renderBoardGameVisual(mode, game) {
+  if (mode === "uno") {
+    const hand = Array.isArray(game.myHand) ? game.myHand.slice(0, 6) : [];
+    return `
+      <div class="live-game-visual card-game-visual uno-game-visual" aria-label="UNO style card table">
+        <div class="uno-discard">${game.topCard ? renderPlayingCard(game.topCard) : renderPlayingCard("R5")}</div>
+        <div class="card-table-hand">${hand.length ? hand.map((card, index) => renderPlayingCard(card, { className: `deal-${Math.min(index + 1, 7)}` })).join("") : ["R5", "Y2", "G8", "B1"].map((card, index) => renderPlayingCard(card, { className: `deal-${index + 1}` })).join("")}</div>
+      </div>
+    `;
+  }
+  const position = Number(game.positions?.[state.sessionId] || 0);
+  return `
+    <div class="live-game-visual board-game-visual" aria-label="3D tabletop board">
+      <div class="isometric-board">
+        ${Array.from({ length: 12 }, (_, index) => `<span class="board-space ${index === position ? "is-player" : ""}"><i>${index + 1}</i></span>`).join("")}
+        <span class="board-player-token"></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderLiveGameVisual(mode, game) {
+  if (["liar", "highroll", "rushdice"].includes(mode)) return renderDiceGameVisual(game, mode === "liar" ? 5 : 2);
+  if (["highcard", "oldmaid", "texas", "rummy"].includes(mode)) return renderCardGameVisual(mode, game);
+  if (mode === "mahjong") return renderMahjongGameVisual(game);
+  if (mode === "roulette") return renderRouletteGameVisual(game);
+  if (mode === "slots") return renderSlotsGameVisual(game);
+  if (["uno", "monopoly"].includes(mode)) return renderBoardGameVisual(mode, game);
+  return "";
+}
+
+function makeDieFaceTexture(THREE, value) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#f9fbff";
+  context.fillRect(0, 0, 256, 256);
+  context.strokeStyle = "#d9e3ef";
+  context.lineWidth = 10;
+  context.strokeRect(5, 5, 246, 246);
+  const points = [[62, 62], [128, 62], [194, 62], [62, 128], [128, 128], [194, 128], [62, 194], [128, 194], [194, 194]];
+  const visible = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] }[value] || [4];
+  context.fillStyle = value === 1 ? "#ef476f" : "#182334";
+  visible.forEach((index) => {
+    context.beginPath();
+    context.arc(points[index][0], points[index][1], 19, 0, Math.PI * 2);
+    context.fill();
+  });
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+function dieTargetRotation(value) {
+  return {
+    1: [0, 0, 0],
+    2: [-Math.PI / 2, 0, 0],
+    3: [0, 0, -Math.PI / 2],
+    4: [0, 0, Math.PI / 2],
+    5: [Math.PI / 2, 0, 0],
+    6: [Math.PI, 0, 0],
+  }[Number(value)] || [0, 0, 0];
+}
+
+function mountThreeDiceScene() {
+  activeDiceSceneCleanup?.();
+  activeDiceSceneCleanup = null;
+  rollActiveDiceScene = null;
+  const host = $("#threeDiceScene");
+  const THREE = window.THREE;
+  if (!host) return;
+
+  const replayCssDice = () => {
+    host.querySelectorAll(".css-die-cube").forEach((cube) => {
+      cube.style.animation = "none";
+      cube.offsetWidth;
+      cube.style.animation = "";
+    });
+  };
+
+  if (!THREE) {
+    rollActiveDiceScene = replayCssDice;
+    replayCssDice();
+    return;
+  }
+
+  const values = String(host.dataset.diceValues || "1,6").split(",").map(Number).slice(0, 5);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+  camera.position.set(0, 5.8, 10.5);
+  camera.lookAt(0, 0.2, 0);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  host.classList.add("has-webgl");
+  host.append(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x123b35, 2.2));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 4.2);
+  keyLight.position.set(-4, 8, 5);
+  keyLight.castShadow = true;
+  scene.add(keyLight);
+  const rimLight = new THREE.PointLight(0xff6f91, 34, 20);
+  rimLight.position.set(5, 3, 2);
+  scene.add(rimLight);
+
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(8, 64),
+    new THREE.MeshStandardMaterial({ color: 0x0f5d50, roughness: 0.74, metalness: 0.08 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -1.18;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const textures = [4, 3, 1, 6, 2, 5].map((value) => makeDieFaceTexture(THREE, value));
+  const materials = textures.map((texture) => new THREE.MeshStandardMaterial({ map: texture, roughness: 0.24, metalness: 0.04 }));
+  const geometry = new THREE.BoxGeometry(1.65, 1.65, 1.65, 4, 4, 4);
+  const dice = values.map((value, index) => {
+    const die = new THREE.Mesh(geometry, materials);
+    const spread = values.length > 3 ? 1.85 : 2.35;
+    die.position.set((index - (values.length - 1) / 2) * spread, -0.05 + (index % 2) * 0.18, (index % 2 ? -0.25 : 0.2));
+    die.castShadow = true;
+    die.receiveShadow = true;
+    scene.add(die);
+    return { mesh: die, value, offset: index * 85 };
+  });
+
+  let animationFrame = 0;
+  let rollStartedAt = performance.now();
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+  const resize = () => {
+    const width = Math.max(280, host.clientWidth);
+    const height = Math.max(220, Math.min(360, width * 0.43));
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  };
+  const observer = new ResizeObserver(resize);
+  observer.observe(host);
+  resize();
+
+  const startRoll = () => {
+    rollStartedAt = performance.now();
+    dice.forEach(({ mesh }, index) => {
+      mesh.rotation.set(index * 0.8 + Math.random(), Math.random() * 2, Math.random() * 2);
+      mesh.position.y = -0.05;
+    });
+  };
+
+  const renderFrame = (now) => {
+    const duration = reducedMotion ? 180 : 1250;
+    dice.forEach(({ mesh, value, offset }, index) => {
+      const localElapsed = Math.max(0, now - rollStartedAt - offset);
+      const progress = Math.min(1, localElapsed / duration);
+      if (progress < 1) {
+        const speed = 0.12 * (1 - progress) + 0.025;
+        mesh.rotation.x += speed * (index % 2 ? 1.1 : 0.9);
+        mesh.rotation.y += speed * 1.25;
+        mesh.rotation.z += speed * 0.75;
+        mesh.position.y = -0.05 + Math.sin(progress * Math.PI) * (1.6 + index * 0.08);
+      } else {
+        const target = dieTargetRotation(value);
+        mesh.rotation.x += (target[0] - mesh.rotation.x) * 0.18;
+        mesh.rotation.y += (target[1] - mesh.rotation.y) * 0.18;
+        mesh.rotation.z += (target[2] - mesh.rotation.z) * 0.18;
+        mesh.position.y += (-0.05 - mesh.position.y) * 0.24;
+      }
+    });
+    renderer.render(scene, camera);
+    animationFrame = window.requestAnimationFrame(renderFrame);
+  };
+
+  startRoll();
+  animationFrame = window.requestAnimationFrame(renderFrame);
+  rollActiveDiceScene = startRoll;
+  activeDiceSceneCleanup = () => {
+    window.cancelAnimationFrame(animationFrame);
+    observer.disconnect();
+    geometry.dispose();
+    floor.geometry.dispose();
+    floor.material.dispose();
+    materials.forEach((material) => material.dispose());
+    textures.forEach((texture) => texture.dispose());
+    renderer.dispose();
+    renderer.domElement.remove();
+  };
 }
 
 function renderHandCounts(game) {
@@ -2242,8 +2638,8 @@ function renderUnoGame(game) {
           ? mine
               .map(
                 (card) => `
-                  <button class="token-action card-chip ${handItemTone(card) ? `is-${handItemTone(card)}` : ""}" type="button" data-game-move="play" data-card="${escapeHtml(handItemLabel(card))}" ${isMyTurn ? "" : "disabled"}>
-                    ${escapeHtml(handItemLabel(card))}
+                  <button class="token-action game-card is-${playingCardVisual(card).tone}" type="button" data-game-move="play" data-card="${escapeHtml(handItemLabel(card))}" ${isMyTurn ? "" : "disabled"} aria-label="Play ${escapeHtml(handItemLabel(card))}">
+                    ${renderCardFaceContent(card)}
                   </button>
                 `,
               )
@@ -2526,6 +2922,9 @@ function renderPartyGamesLegacy() {
 function renderPartyGames() {
   const arena = $("#partyGameArena");
   if (!arena) return;
+  activeDiceSceneCleanup?.();
+  activeDiceSceneCleanup = null;
+  rollActiveDiceScene = null;
   window.clearInterval(state.reactionUiTimer);
   state.reactionUiTimer = null;
 
@@ -2603,6 +3002,7 @@ function renderPartyGames() {
       <section class="party-game-stage" style="--game-accent:${visual.accent}; --game-accent-soft:${visual.accentSoft};">
         <div class="party-stage-head"><div><h3>${active.name}</h3><p>${active.description}</p></div><span class="party-round">ROUND ${Number(game.round || 1)}</span></div>
         ${renderPartyGameHero(mode, game)}
+        ${renderLiveGameVisual(mode, game)}
         ${stage}
       </section>
       ${renderPartyScoreboard(game)}
@@ -2623,7 +3023,9 @@ function renderPartyGames() {
   );
   $$("[data-game-move]").forEach((button) =>
     button.addEventListener("click", () => {
-      triggerGameFeedback(feedbackKindForMove(button.dataset.gameMove), button);
+      const feedbackKind = feedbackKindForMove(button.dataset.gameMove);
+      triggerGameFeedback(feedbackKind, button);
+      if (feedbackKind === "dice") rollActiveDiceScene?.();
       const extra = {};
       if (button.dataset.card) extra.card = button.dataset.card;
       if (button.dataset.bet) extra.bet = button.dataset.bet;
@@ -2673,6 +3075,7 @@ function renderPartyGames() {
   if (mode === "reaction") wireReactionGame(game);
   if (mode === "doodle") wireDoodleBoard(game);
   if (mode === "orbit") wireOrbitGame(game);
+  mountThreeDiceScene();
   syncGameMusic();
   syncIcons();
 }

@@ -8,7 +8,7 @@
       content="緣房間是一個可由不同裝置連入同一伺服器與房間的多人交友網站。"
     />
     <meta name="theme-color" content="#087f7b" />
-    <title>緣房間 | 交友語音配對</title>
+    <title>緣房間 | 社交遊戲俱樂部</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -38,12 +38,13 @@
           </button>
           <button class="nav-item" data-view="games">
             <i data-lucide="gamepad-2"></i>
-            <span>共玩</span>
+            <span>遊戲廳</span>
           </button>
           <button class="nav-item" data-view="safety">
             <i data-lucide="shield-check"></i>
             <span>安全</span>
           </button>
+          <button class="nav-item" data-view="membership"><i data-lucide="crown"></i><span>會員</span></button>
         </nav>
 
         <div class="profile-mini">
@@ -370,6 +371,14 @@
 
           <div class="safety-grid" id="safetyGrid" aria-live="polite"></div>
         </section>
+        <section class="view" id="membership-view" aria-labelledby="membershipTitle">
+          <h2 id="membershipTitle">會員方案</h2>
+          <p>遊戲積分僅供娛樂，不可購買、轉讓、提款或兌換獎品。</p>
+          <div class="membership-plans">
+            <article><h3>免費玩家</h3><strong>NT$0</strong><ul><li>多人遊戲房</li><li>骰子、撲克牌、麻將與桌遊</li><li>房內聊天與語音</li><li>基本牌桌與遊戲特效</li></ul><button class="primary-action" onclick="setView('games')">進入遊戲廳</button></article>
+            <article><h3>Club 會員</h3><strong>尚未開放訂閱</strong><p>規劃提供專屬牌桌、造型、音樂特效與私人房設定。</p><p>價格與付款服務確認後開放，遊戲勝負不提供金錢收益。</p><button class="ghost-action" disabled>尚未開放付款</button></article>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -417,6 +426,10 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"
+      onerror="this.onerror=null;this.src='https://unpkg.com/three@0.152.2/build/three.min.js'"
+    ></script>
     <script src="app.js"></script>
   </body>
 </html>
