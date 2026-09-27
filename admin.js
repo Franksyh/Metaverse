@@ -34,7 +34,14 @@ form.addEventListener('submit', async event => {
     button.disabled = false;
   }
 });
-document.querySelector('#adminLogout').addEventListener('click', () => {
+document.querySelector('#adminLogout').addEventListener('click', async () => {
+  try {
+    const response = await fetch('/api/admin-status', { method: 'DELETE' });
+    if (!response.ok) throw new Error();
+  } catch {
+    notice.textContent = '登出失敗，請重試';
+    return;
+  }
   panel.hidden = true;
   document.querySelector('#adminStatuses').replaceChildren();
   form.hidden = false;

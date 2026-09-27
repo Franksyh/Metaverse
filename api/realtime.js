@@ -7,6 +7,7 @@ import {
   snapshot,
   text,
 } from "../realtime-core.js";
+import { isAdmin } from "../admin-auth.js";
 
 async function readJsonBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
@@ -77,5 +78,5 @@ export default async function handler(req, res) {
     return sendJson(res, 400, { error: "Invalid JSON" });
   }
 
-  return sendJson(res, 200, applyRealtimeAction(state, payload, now));
+  return sendJson(res, 200, applyRealtimeAction(state, payload, now, { admin: isAdmin(req.headers?.cookie) }));
 }

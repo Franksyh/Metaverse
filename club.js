@@ -12,13 +12,21 @@
   const archived = new Set(['vibe', 'highcard', 'rushdice', 'spark']);
   const memberGames = new Set(['texas', 'roulette', 'slots']);
   const arena = document.querySelector('#partyGameArena');
-  arena?.addEventListener('click', event => {
+  arena?.addEventListener('click', async event => {
     const button = event.target.closest('[data-party-mode]');
     if (button && memberGames.has(button.dataset.partyMode)) {
       event.preventDefault();
       event.stopImmediatePropagation();
+      try {
+        const response = await fetch('/api/admin-status', { cache: 'no-store' });
+        const access = response.ok ? await response.json() : {};
+        if (access.memberAccess === true) {
+          await selectPartyGame(button.dataset.partyMode);
+          return;
+        }
+      } catch {}
       setView('membership');
-      showToast('會員遊戲尚未開放，尚不收取任何費用');
+      showToast('會員遊戲尚未開放；管理者可從管理頁登入後免費使用');
     }
   }, true);
   function enhance() {

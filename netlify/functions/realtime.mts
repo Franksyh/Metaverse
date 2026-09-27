@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { isAdmin } from "../../admin-auth.js";
 import {
   DEFAULT_ROOM_ID,
   applyRealtimeAction,
@@ -63,7 +64,7 @@ export default async (req) => {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  const body = applyRealtimeAction(state, payload, now);
+  const body = applyRealtimeAction(state, payload, now, { admin: isAdmin(req.headers.get("cookie") || "") });
   await store.setJSON(ROOM_KEY, state);
   return json(body);
 };
