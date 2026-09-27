@@ -5405,11 +5405,7 @@ function renderSafetyCenter() {
 
   $$("[data-verify-step]").forEach((button) => {
     button.addEventListener("click", () => {
-      userProfile.verifications[button.dataset.verifyStep] = true;
-      renderSafetyCenter();
-      renderProfilePreview();
-      scheduleSave();
-      showToast("驗證狀態已更新");
+      showToast("真人驗證服務尚未開通，目前無法核發驗證標章");
     });
   });
   $$("[data-safety-action]").forEach((button) => {

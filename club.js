@@ -9,7 +9,18 @@
   };
   let category = 'all';
   let query = '';
+  const archived = new Set(['vibe', 'highcard', 'rushdice', 'spark']);
+  const memberGames = new Set(['texas', 'roulette', 'slots']);
   const arena = document.querySelector('#partyGameArena');
+  arena?.addEventListener('click', event => {
+    const button = event.target.closest('[data-party-mode]');
+    if (button && memberGames.has(button.dataset.partyMode)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setView('membership');
+      showToast('會員遊戲尚未開放，尚不收取任何費用');
+    }
+  }, true);
   function enhance() {
     if (!arena || arena.querySelector('.club-toolbar')) return;
     const library = arena.querySelector('.party-game-library');
@@ -41,7 +52,7 @@
     const filter = () => {
       let count = 0;
       library.querySelectorAll('[data-party-mode]').forEach(button => {
-        const match = (!groups[category][1] || groups[category][1].includes(button.dataset.partyMode)) && button.textContent.toLowerCase().includes(query.toLowerCase());
+        const match = !archived.has(button.dataset.partyMode) && (!groups[category][1] || groups[category][1].includes(button.dataset.partyMode)) && button.textContent.toLowerCase().includes(query.toLowerCase());
         button.hidden = !match;
         if (match) count++;
       });
@@ -64,6 +75,12 @@
     empty.className = 'club-empty';
     arena.insertBefore(toolbar, library);
     arena.append(empty);
+    for (const button of library.querySelectorAll('[data-party-mode]')) {
+      if (memberGames.has(button.dataset.partyMode)) {
+        const badge = button.querySelector('.party-mode-label');
+        if (badge) badge.textContent = '會員限定 · 尚未開放';
+      }
+    }
     filter();
   }
   if (arena) new MutationObserver(enhance).observe(arena, { childList: true });

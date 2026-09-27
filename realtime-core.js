@@ -1476,6 +1476,12 @@ export function pruneState(state, nowMs = Date.now()) {
 export function applyRealtimeAction(state, payload, now = new Date()) {
   const action = text(payload.action, "heartbeat", 40);
   const roomId = text(payload.roomId, DEFAULT_ROOM_ID, 80);
+  const restrictedModes = new Set(["texas", "roulette", "slots"]);
+  const requestedMode = action === "game-select" ? payload.mode : state.games?.[roomId]?.mode;
+  // Fail closed until server-verified membership is integrated. Never trust client flags.
+  if (action.startsWith("game-") && restrictedModes.has(requestedMode)) {
+    return { ...snapshot(state, roomId, text(payload.sessionId, "", 120), now.getTime()), error: "會員遊戲尚未開放，請先查看會員方案", code: "MEMBERSHIP_UNAVAILABLE" };
+  }
   if (action === "leave") {
     const sessionId = text(payload.sessionId, "", 120);
     state.participants = state.participants.filter((participant) => participant.sessionId !== sessionId);

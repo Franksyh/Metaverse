@@ -2,3 +2,5 @@
 .git
 *.log
 .env*
+games
+assets/*-check.png
