@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import appDataHandler from "./api/app-data.js";
 import realtimeHandler from "./api/realtime.js";
 import waitlistHandler from "./api/waitlist.js";
+import adminStatusHandler from "./api/admin-status.js";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const startPort = Number(process.env.PORT || 5173);
@@ -17,6 +18,7 @@ const apiHandlers = new Map([
   ["/api/app-data", appDataHandler],
   ["/api/realtime", realtimeHandler],
   ["/api/waitlist", waitlistHandler],
+  ["/api/admin-status", adminStatusHandler],
 ]);
 
 const types = {

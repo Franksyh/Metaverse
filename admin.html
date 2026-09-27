@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>緣房間 | 收款管理</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header><a href="/">緣房間</a><span>收款管理</span></header>
+  <main>
+    <h1>管理者登入</h1>
+    <form id="adminLogin">
+      <label for="adminToken">管理者存取憑證</label>
+      <input id="adminToken" type="password" autocomplete="off" required minlength="32">
+      <button type="submit">登入</button>
+    </form>
+    <p id="adminNotice" role="status" aria-live="polite"></p>
+    <section id="adminPanel" hidden>
+      <div class="heading"><h2>收款設定</h2><button id="adminLogout" type="button">登出</button></div>
+      <dl id="adminStatuses"></dl>
+      <h2>網站流量</h2>
+      <p>前往 Vercel 專案查看流量。訪客與瀏覽量報表需先在平台啟用 Web Analytics；尚未啟用時，不會顯示虛構統計。</p>
+      <nav aria-label="流量管理">
+        <a href="https://vercel.com/frankprojects1/pair-room-dating-site/analytics" target="_blank" rel="noopener noreferrer">開啟訪客分析 ↗</a>
+        <a href="https://vercel.com/frankprojects1/pair-room-dating-site" target="_blank" rel="noopener noreferrer">開啟 Vercel 專案 ↗</a>
+      </nav>
+      <h2>銀行帳戶與撥款</h2>
+      <p>請選定金流服務，於官方平台完成個人賣家審核及本人銀行帳戶綁定。此頁不收集網銀帳密或銀行驗證碼。</p>
+      <nav aria-label="金流官方入口">
+        <a href="https://www.ecpay.com.tw/" target="_blank" rel="noopener noreferrer">前往綠界官方平台 ↗</a>
+        <a href="https://www.newebpay.com/" target="_blank" rel="noopener noreferrer">前往藍新官方平台 ↗</a>
+      </nav>
+      <p>尚未開放會員付款或儲值。金流核准並串接訂單、付款通知及退款流程後，才可開始收款。</p>
+      <h2>台灣與海外銀行</h2>
+      <p>台灣：綠界僅接受台灣本地、戶名與賣家一致的銀行帳戶。實際可選銀行請以金流後台為準。</p>
+      <p>海外：需另行申請支援所在地的金流服務，並符合當地商家、帳戶與幣別要求。目前未開通海外銀行綁定。</p>
+      <nav aria-label="銀行支援說明">
+        <a href="https://support.ecpay.com.tw/4789/" target="_blank" rel="noopener noreferrer">台灣銀行綁定規定 ↗</a>
+        <a href="https://stripe.com/global" target="_blank" rel="noopener noreferrer">海外金流適用地區 ↗</a>
+      </nav>
+    </section>
+  </main>
+  <script src="admin.js"></script>
+</body>
+</html>
