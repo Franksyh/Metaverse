@@ -1,4 +1,4 @@
-const CACHE_NAME = "pair-room-v11-email-confirmation-flow";
+const CACHE_NAME = "pair-room-v12-fresh-app-shell";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,7 +10,11 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(APP_SHELL.map((asset) => cache.add(new Request(new URL(asset, self.location.href), { cache: "reload" })))),
+    ),
+  );
   self.skipWaiting();
 });
 
@@ -31,8 +35,12 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const requestUrl = new URL(event.request.url);
   if (requestUrl.pathname.startsWith("/api/")) return;
+  const isAppShellAsset =
+    requestUrl.origin === self.location.origin &&
+    (requestUrl.pathname.endsWith("/") || /\.(?:css|html|js|json|mjs)$/i.test(requestUrl.pathname));
+  const networkRequest = isAppShellAsset ? new Request(event.request, { cache: "no-store" }) : event.request;
   event.respondWith(
-    fetch(event.request)
+    fetch(networkRequest)
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
