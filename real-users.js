@@ -14,6 +14,9 @@ let activationPromise = null;
 let activationUserId = "";
 let memberRefreshTimer = null;
 let presenceRefreshTimer = null;
+let socialRealtimeChannel = null;
+let socialRefreshTimer = null;
+let socialRefreshState = { members: false, posts: false };
 let accountGate = null;
 
 const $ = (selector) => document.querySelector(selector);
@@ -399,6 +402,51 @@ async function touchPresence() {
   if (profileResult.error) throw profileResult.error;
 }
 
+function queueSocialRefresh({ members = false, posts = false } = {}) {
+  if (!authUser) return;
+  socialRefreshState.members ||= members;
+  socialRefreshState.posts ||= posts;
+  window.clearTimeout(socialRefreshTimer);
+  socialRefreshTimer = window.setTimeout(() => {
+    const refreshMembersNow = socialRefreshState.members;
+    const refreshPostsNow = socialRefreshState.posts;
+    socialRefreshState = { members: false, posts: false };
+    socialRefreshTimer = null;
+    if (refreshMembersNow) void refreshMembers();
+    if (refreshPostsNow) void refreshPosts();
+  }, 250);
+}
+
+function stopSocialRealtime() {
+  window.clearTimeout(socialRefreshTimer);
+  socialRefreshTimer = null;
+  socialRefreshState = { members: false, posts: false };
+  const channel = socialRealtimeChannel;
+  socialRealtimeChannel = null;
+  if (supabase && channel) void supabase.removeChannel(channel);
+}
+
+function startSocialRealtime() {
+  stopSocialRealtime();
+  if (!supabase || !authUser) return;
+
+  socialRealtimeChannel = supabase
+    .channel(`pair-room-social-${authUser.id}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+      queueSocialRefresh({ members: true, posts: true });
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "room_presence" }, () => {
+      queueSocialRefresh({ members: true });
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, () => {
+      queueSocialRefresh({ posts: true });
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => {
+      queueSocialRefresh({ posts: true });
+    })
+    .subscribe();
+}
+
 function startAccountSync() {
   window.clearInterval(memberRefreshTimer);
   window.clearInterval(presenceRefreshTimer);
@@ -409,6 +457,7 @@ function startAccountSync() {
   presenceRefreshTimer = window.setInterval(() => {
     touchPresence().catch(() => {});
   }, PRESENCE_REFRESH_MS);
+  startSocialRealtime();
 }
 
 function stopAccountSync() {
@@ -416,6 +465,7 @@ function stopAccountSync() {
   window.clearInterval(presenceRefreshTimer);
   memberRefreshTimer = null;
   presenceRefreshTimer = null;
+  stopSocialRealtime();
 }
 
 async function activateSession(user) {
@@ -502,7 +552,7 @@ async function saveProfileToDatabase(event) {
       .single();
     if (error) throw error;
     profileRecord = data;
-    await refreshMembers();
+    await Promise.all([refreshMembers(), refreshPosts()]);
     showToast("真人會員檔案已同步");
   } catch (error) {
     const message = String(error?.message || "");
