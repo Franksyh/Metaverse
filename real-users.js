@@ -17,6 +17,7 @@ let presenceRefreshTimer = null;
 let socialRealtimeChannel = null;
 let socialRefreshTimer = null;
 let socialRefreshState = { members: false, posts: false };
+let pendingVerificationEmail = "";
 let accountGate = null;
 
 const $ = (selector) => document.querySelector(selector);
@@ -209,6 +210,49 @@ function setGateMessage(message = "", tone = "") {
   note.dataset.tone = tone;
 }
 
+function authRedirectUrl() {
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+function isEmailConfirmationError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("email not confirmed") || message.includes("email not verified") || message.includes("email confirmation");
+}
+
+function showResendConfirmationAction(email) {
+  pendingVerificationEmail = String(email || "").trim();
+  const resendButton = $("#resendConfirmationBtn");
+  if (resendButton) resendButton.hidden = !pendingVerificationEmail;
+}
+
+function authErrorMessage(error) {
+  const message = String(error?.message || error || "");
+  const normalized = message.toLowerCase();
+  if (isEmailConfirmationError(message)) return "請先到 Email 信箱點擊驗證連結，完成後再回來登入。";
+  if (normalized.includes("invalid login credentials")) return "Email 或密碼不正確。";
+  if (normalized.includes("rate limit") || normalized.includes("too many requests")) return "操作次數過多，請稍後再試。";
+  return "帳號操作失敗，請稍後再試。";
+}
+
+async function resendConfirmationEmail() {
+  if (!supabase || !pendingVerificationEmail) return;
+  const resendButton = $("#resendConfirmationBtn");
+  if (resendButton) resendButton.disabled = true;
+  try {
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: pendingVerificationEmail,
+      options: { emailRedirectTo: authRedirectUrl() },
+    });
+    if (error) throw error;
+    setGateMessage("驗證信已重新寄出，請查看收件匣與垃圾郵件匣。", "success");
+  } catch (error) {
+    setGateMessage(authErrorMessage(error), "error");
+  } finally {
+    if (resendButton) resendButton.disabled = false;
+  }
+}
+
 function renderAccountGate(mode = authMode) {
   authMode = mode;
   const gate = ensureAccountGate();
@@ -236,6 +280,9 @@ function renderAccountGate(mode = authMode) {
         <label><span>Email</span><input name="email" type="email" autocomplete="email" required /></label>
         <label><span>密碼</span><input name="password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" minlength="8" required /></label>
         <p class="account-gate-note" id="accountGateNote" aria-live="polite"></p>
+        <button class="ghost-action account-resend" type="button" id="resendConfirmationBtn" ${pendingVerificationEmail ? "" : "hidden"}>
+          重新寄送驗證信
+        </button>
         <button class="primary-action stretch" type="submit" id="accountSubmitBtn">
           <i data-lucide="${isRegister ? "user-round-plus" : "log-in"}"></i>
           <span>${isRegister ? "建立帳號" : "登入"}</span>
@@ -249,6 +296,7 @@ function renderAccountGate(mode = authMode) {
   });
   $("#closeAccountGate")?.addEventListener("click", hideAccountGate);
   $("#accountAuthForm")?.addEventListener("submit", handleAccountSubmit);
+  $("#resendConfirmationBtn")?.addEventListener("click", resendConfirmationEmail);
   syncIcons();
 }
 
@@ -710,11 +758,15 @@ async function handleAccountSubmit(event) {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { display_name: displayName } },
+        options: {
+          data: { display_name: displayName },
+          emailRedirectTo: authRedirectUrl(),
+        },
       });
       if (error) throw error;
       if (data.user && !data.session) {
-        setGateMessage("帳號已建立，請到 Email 信箱完成驗證後再登入。", "success");
+        showResendConfirmationAction(email);
+        setGateMessage("帳號已建立，請到 Email 信箱點擊驗證連結後再登入。", "success");
         return;
       }
       await activateSession(data.user);
@@ -724,7 +776,8 @@ async function handleAccountSubmit(event) {
       await activateSession(data.user);
     }
   } catch (error) {
-    setGateMessage(error?.message || "帳號操作失敗，請稍後再試。", "error");
+    if (isEmailConfirmationError(error)) showResendConfirmationAction(email);
+    setGateMessage(authErrorMessage(error), "error");
   } finally {
     setSubmitBusy(false);
   }

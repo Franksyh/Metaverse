@@ -5356,6 +5356,16 @@ textarea {
   color: var(--teal);
 }
 
+.account-resend {
+  width: 100%;
+  min-height: 38px;
+  color: var(--teal);
+}
+
+.account-resend[hidden] {
+  display: none;
+}
+
 .member-empty-state {
   display: grid;
   place-items: center;
