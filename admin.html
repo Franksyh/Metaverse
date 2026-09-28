@@ -4,22 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>緣房間 | 收款管理</title>
+  <title>緣房間 | 共用管理後台</title>
   <link rel="stylesheet" href="admin.css">
 </head>
 <body>
-  <header><a href="/">緣房間</a><span>收款管理</span></header>
+  <header><a href="/">緣房間</a><span>共用管理後台</span></header>
   <main>
-    <h1>管理者登入</h1>
+    <p class="eyebrow">AUTHORIZED STAFF</p>
+    <h1>共用管理後台</h1>
+    <p class="intro">受授權的管理者從同一個入口登入。請勿將管理者憑證公開在聊天室、社群貼文或網站中。</p>
     <form id="adminLogin">
-      <label for="adminToken">管理者存取憑證</label>
-      <input id="adminToken" type="password" autocomplete="off" required minlength="32">
+      <label for="adminToken">共用管理者憑證</label>
+      <input id="adminToken" type="password" autocomplete="current-password" required minlength="32" placeholder="輸入管理者憑證">
       <button type="submit">登入</button>
     </form>
     <p id="adminNotice" role="status" aria-live="polite"></p>
     <section id="adminPanel" hidden>
       <div class="heading"><h2>收款設定</h2><button id="adminLogout" type="button">登出</button></div>
-      <p>管理者免費享有目前已實作的會員遊戲，登入有效期限一小時。</p>
+      <p>已登入共用管理後台。管理者免費享有目前已實作的會員遊戲，登入有效期限一小時。</p>
       <a href="/">返回網站使用會員遊戲</a>
       <dl id="adminStatuses"></dl>
       <h2>網站流量</h2>
