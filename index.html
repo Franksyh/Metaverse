@@ -2,12 +2,15 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
       content="緣房間是一個可由不同裝置連入同一伺服器與房間的多人交友網站。"
     />
     <meta name="theme-color" content="#087f7b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
     <title>緣房間 | 社交遊戲俱樂部</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="styles.css" />
@@ -36,6 +39,10 @@
           <button class="nav-item" data-view="profile">
             <i data-lucide="user-round"></i>
             <span>檔案</span>
+          </button>
+          <button class="nav-item" data-view="explore">
+            <i data-lucide="layers-3"></i>
+            <span>滑卡</span>
           </button>
           <button class="nav-item" data-view="games">
             <i data-lucide="gamepad-2"></i>
@@ -80,6 +87,32 @@
         </header>
 
         <section class="view is-active" id="rooms-view" aria-labelledby="roomsTitle">
+          <section class="home-quick-actions" aria-label="真人互動入口">
+            <button class="home-quick-action is-voice" type="button" data-home-action="voice">
+              <span class="home-action-icon"><i data-lucide="audio-lines"></i></span>
+              <span class="home-action-copy">
+                <strong>語音聊天</strong>
+                <small id="homeVoiceStatus">準備連線</small>
+              </span>
+              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
+            </button>
+            <button class="home-quick-action is-soul" type="button" data-home-action="soul">
+              <span class="home-action-icon"><i data-lucide="heart-handshake"></i></span>
+              <span class="home-action-copy">
+                <strong>靈魂配對</strong>
+                <small id="homeSoulStatus">尋找同房真人</small>
+              </span>
+              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
+            </button>
+            <button class="home-quick-action is-room" type="button" data-home-action="room">
+              <span class="home-action-icon"><i data-lucide="shuffle"></i></span>
+              <span class="home-action-copy">
+                <strong>房間配對</strong>
+                <small id="homeRoomStatus">隨機語音房</small>
+              </span>
+              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
+            </button>
+          </section>
           <div class="section-heading">
             <div>
               <p class="eyebrow">Live Room</p>
@@ -166,8 +199,8 @@
         <section class="view" id="explore-view" aria-labelledby="exploreTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Search & Filter</p>
-              <h2 id="exploreTitle">探索與篩選</h2>
+              <p class="eyebrow">Discover</p>
+              <h2 id="exploreTitle">滑卡探索</h2>
             </div>
             <button class="ghost-action" type="button" id="resetFiltersBtn">
               <i data-lucide="rotate-ccw"></i>

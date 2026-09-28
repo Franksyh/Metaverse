@@ -788,6 +788,7 @@ function setVoice(state, payload, now, joined) {
 function addMatchInvite(state, payload, now) {
   const fromSessionId = text(payload.sessionId, "", 120);
   const roomId = text(payload.roomId, DEFAULT_ROOM_ID, 80);
+  const kind = text(payload.kind, "match", 24) === "friend" ? "friend" : "match";
   if (!fromSessionId) return;
   const roomParty = roomParticipants(state, roomId).filter((item) => item.sessionId !== fromSessionId);
   const target =
@@ -800,6 +801,7 @@ function addMatchInvite(state, payload, now) {
     fromName: text(payload.name, "訪客", 80),
     toSessionId: target?.sessionId || "",
     toName: target?.name || "下一位在線使用者",
+    kind,
     status: target ? "pending" : "open",
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),

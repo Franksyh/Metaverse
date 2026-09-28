@@ -553,6 +553,10 @@ const state = {
   activeView: "rooms",
   currentRoomId: "late-night",
   profileIndex: 0,
+  swipeDismissedIds: [],
+  swipeLikedIds: [],
+  swipeSuperLikedIds: [],
+  swipeAnimating: false,
   activeConversationId: "late-night-chat",
   globalSearch: "",
   discoverFilters: { ...defaultDiscoverFilters },
@@ -847,6 +851,9 @@ function saveAppState() {
       waitlistCount: state.waitlistCount,
       sessionId: state.sessionId,
       superLikes: state.superLikes,
+      swipeDismissedIds: state.swipeDismissedIds,
+      swipeLikedIds: state.swipeLikedIds,
+      swipeSuperLikedIds: state.swipeSuperLikedIds,
       soundEnabled: state.soundEnabled,
       musicEnabled: state.musicEnabled,
       sensitiveFilter: state.sensitiveFilter,
@@ -1270,6 +1277,9 @@ function loadSavedState() {
     if (saved.state) {
       Object.assign(state, saved.state);
       state.discoverFilters = { ...defaultDiscoverFilters, ...(saved.state.discoverFilters || {}) };
+      state.swipeDismissedIds = Array.isArray(saved.state.swipeDismissedIds) ? saved.state.swipeDismissedIds : [];
+      state.swipeLikedIds = Array.isArray(saved.state.swipeLikedIds) ? saved.state.swipeLikedIds : [];
+      state.swipeSuperLikedIds = Array.isArray(saved.state.swipeSuperLikedIds) ? saved.state.swipeSuperLikedIds : [];
     }
     ensureSessionId();
   } catch {
@@ -1581,16 +1591,100 @@ async function sendLiveMessage(text) {
   await syncRealtime("message", { text: message });
 }
 
-async function inviteLiveMatch(toSessionId = "") {
+async function inviteLiveMatch(toSessionId = "", options = {}) {
+  const kind = options.kind === "friend" ? "friend" : "match";
   triggerGameFeedback("hit");
-  await syncRealtime("match-invite", { toSessionId });
+  await syncRealtime("match-invite", { toSessionId, kind });
+  if (kind === "friend") {
+    showToast("已送出好友邀請");
+    return;
+  }
   showToast(toSessionId ? "已送出配對邀請" : "已發出隨機配對邀請");
+}
+
+function liveRoomPeers() {
+  return state.liveParticipants.filter((participant) => participant.sessionId !== state.sessionId);
+}
+
+function renderHomeQuickActions() {
+  const room = roomById(state.currentRoomId);
+  const peers = liveRoomPeers();
+  const voicePeers = peers.filter((participant) => participant.voice?.joined);
+  const voiceStatus = $("#homeVoiceStatus");
+  const soulStatus = $("#homeSoulStatus");
+  const roomStatus = $("#homeRoomStatus");
+
+  if (voiceStatus) {
+    voiceStatus.textContent = !state.connectionReady
+      ? "填寫暱稱後可上麥"
+      : state.micOn
+        ? `${room.title} · 已上麥`
+        : voicePeers.length
+          ? `${voicePeers.length} 人正在上麥`
+          : "加入目前語音房";
+  }
+  if (soulStatus) {
+    soulStatus.textContent = !state.connectionReady
+      ? "填寫暱稱後可配對"
+      : peers.length
+        ? `${peers.length} 位在線真人`
+        : "等待同房真人";
+  }
+  if (roomStatus) {
+    roomStatus.textContent = !state.connectionReady ? "填寫暱稱後可加入" : `隨機探索 ${rooms.length} 間房`;
+  }
+}
+
+function scrollToMultiplayerPanel() {
+  window.requestAnimationFrame(() => {
+    $("#multiplayerPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+async function handleHomeQuickAction(action) {
+  if (!state.connectionReady) {
+    openConnectionGate();
+    return;
+  }
+
+  if (action === "voice") {
+    if (state.micOn) {
+      showToast("你已在目前語音房");
+    } else {
+      await toggleMic();
+    }
+    scrollToMultiplayerPanel();
+    return;
+  }
+
+  if (action === "soul") {
+    scrollToMultiplayerPanel();
+    if (liveRoomPeers().length) {
+      showToast("從此房在線名單選擇一位真人加好友");
+    } else {
+      showToast("目前尚未有其他在線真人，分享同一房號後即可配對");
+    }
+    return;
+  }
+
+  if (action === "room") {
+    const availableRooms = rooms.filter((room) => room.active < room.capacity);
+    const alternatives = availableRooms.filter((room) => room.id !== state.currentRoomId);
+    const pool = alternatives.length ? alternatives : availableRooms;
+    const room = pool[Math.floor(Math.random() * pool.length)];
+    if (!room) {
+      showToast("目前沒有可加入的語音房");
+      return;
+    }
+    joinRoom(room.id);
+    scrollToMultiplayerPanel();
+  }
 }
 
 async function acceptLiveMatch(matchId) {
   triggerGameFeedback("win");
   await syncRealtime("match-accept", { matchId });
-  showToast("已接受配對邀請，可以開始一對一聊天");
+  showToast("已接受邀請，可以開始一對一聊天");
   state.activeConversationId = `match:${matchId}`;
   setView("chat");
 }
@@ -3281,7 +3375,7 @@ function renderMultiplayerPanel() {
                         ${
                           participant.sessionId === state.sessionId
                             ? ""
-                            : `<button class="mini-action" type="button" data-invite-session="${escapeHtml(participant.sessionId)}">配對</button>`
+                            : `<button class="mini-action" type="button" data-friend-session="${escapeHtml(participant.sessionId)}">加好友</button>`
                         }
                       </article>
                     `,
@@ -3365,7 +3459,7 @@ function renderMultiplayerPanel() {
       <section class="live-match-card">
         <div class="sub-panel-title">
           <i data-lucide="heart-handshake"></i>
-          <h4>真人配對邀請</h4>
+          <h4>好友邀請</h4>
         </div>
         <div class="live-match-list">
           ${
@@ -3380,7 +3474,7 @@ function renderMultiplayerPanel() {
                       <article>
                         <span>
                           <strong>${escapeHtml(match.fromName)} → ${escapeHtml(match.toName)}</strong>
-                          <small>${match.status === "accepted" ? "已配對成功" : match.status === "open" ? "等待房內真人接受" : "等待接受"}</small>
+                          <small>${match.kind === "friend" ? "好友邀請 · " : "配對邀請 · "}${match.status === "accepted" ? "已接受" : match.status === "open" ? "等待房內真人接受" : "等待接受"}</small>
                         </span>
                         ${
                           canAccept
@@ -3393,7 +3487,7 @@ function renderMultiplayerPanel() {
                     `;
                   })
                   .join("")
-              : `<span class="empty-live-note">目前沒有配對邀請。可以對在線真人按「配對」。</span>`
+              : `<span class="empty-live-note">目前沒有好友邀請。可以對在線真人按「加好友」。</span>`
           }
         </div>
         ${
@@ -3432,8 +3526,8 @@ function renderMultiplayerPanel() {
   $("#openPartyGamesBtn")?.addEventListener("click", () => setView("games"));
   $("#openConnectionGateBtn")?.addEventListener("click", openConnectionGate);
   $("#copyRoomLinkBtn")?.addEventListener("click", copyRoomLink);
-  $$("[data-invite-session]").forEach((button) => {
-    button.addEventListener("click", () => inviteLiveMatch(button.dataset.inviteSession));
+  $$("[data-friend-session]").forEach((button) => {
+    button.addEventListener("click", () => inviteLiveMatch(button.dataset.friendSession, { kind: "friend" }));
   });
   $$("[data-accept-match]").forEach((button) => {
     button.addEventListener("click", () => acceptLiveMatch(button.dataset.acceptMatch));
@@ -3450,6 +3544,7 @@ function renderMultiplayerPanel() {
   });
   const list = $("#liveMessageList");
   if (list) list.scrollTop = list.scrollHeight;
+  renderHomeQuickActions();
   syncIcons();
 }
 
@@ -3551,6 +3646,7 @@ function renderRoomStage() {
 }
 
 function joinRoom(roomId) {
+  const previousRoomId = state.currentRoomId;
   state.currentRoomId = roomId;
   renderRooms($("#globalSearch").value);
   renderRoomStage();
@@ -3559,6 +3655,7 @@ function joinRoom(roomId) {
   const room = roomById(roomId);
   $("#statusText").textContent = `你正在 ${room.title}`;
   showToast(`已切換到「${room.title}」`);
+  if (state.micStream && previousRoomId !== roomId) reconnectVoiceRoom();
 }
 
 function profileCompletion() {
@@ -4433,70 +4530,174 @@ function updateDiscoverFilter(event) {
   scheduleSave();
 }
 
+function discoverCandidates() {
+  const dismissed = new Set(state.swipeDismissedIds);
+  return people.filter(matchesDiscoverFilters).filter((person) => !dismissed.has(person.id)).sort((a, b) => b.score - a.score);
+}
+
+function resetSwipeDeck() {
+  state.swipeDismissedIds = [];
+  state.swipeAnimating = false;
+  scheduleSave();
+  renderDiscoverResults();
+}
+
 function renderDiscoverResults() {
-  const results = people.filter(matchesDiscoverFilters).sort((a, b) => b.score - a.score);
-  $("#discoverResults").innerHTML = `
-    <div class="result-toolbar">
-      <div>
-        <strong>${results.length} 位符合條件</strong>
-        <span>${state.globalSearch ? `搜尋：${escapeHtml(state.globalSearch)}` : "依相似度排序"}</span>
+  const allResults = people.filter(matchesDiscoverFilters).sort((a, b) => b.score - a.score);
+  const candidates = discoverCandidates();
+  const person = candidates[0];
+  const nextPerson = candidates[1];
+  const results = $("#discoverResults");
+  if (!results) return;
+
+  if (!person) {
+    results.innerHTML = `
+      <section class="swipe-empty-state">
+        <i data-lucide="sparkles"></i>
+        <p class="eyebrow">Discover</p>
+        <h3>${allResults.length ? "這一輪看完了" : "沒有符合條件的推薦"}</h3>
+        <p>${allResults.length ? "已儲存的喜歡會保留在此裝置。" : "調整篩選條件後再看看。"}</p>
+        <button class="primary-action" type="button" id="restartSwipeDeck"><i data-lucide="rotate-ccw"></i><span>重新探索</span></button>
+      </section>
+    `;
+    $("#restartSwipeDeck")?.addEventListener("click", resetSwipeDeck);
+    syncIcons();
+    return;
+  }
+
+  const decisionCount = state.swipeDismissedIds.length;
+  results.innerHTML = `
+    <section class="swipe-experience" aria-label="推薦滑卡">
+      <header class="swipe-toolbar">
+        <div>
+          <p class="eyebrow">For You</p>
+          <h3>今日推薦</h3>
+        </div>
+        <div class="swipe-progress" aria-label="推薦進度"><strong>${Math.min(decisionCount + 1, allResults.length)}</strong><span>/ ${allResults.length || 1}</span></div>
+      </header>
+      <div class="swipe-stage">
+        ${nextPerson ? `<div class="swipe-card-backdrop" style="background-image:url('${escapeHtml(nextPerson.img)}')" aria-hidden="true"></div>` : ""}
+        <article class="swipe-card" id="swipeCard" tabindex="0" data-person="${escapeHtml(person.id)}" aria-label="${escapeHtml(person.name)}，${person.age} 歲">
+          <div class="swipe-card-media">
+            <img src="${escapeHtml(person.img)}" alt="${escapeHtml(person.name)} 的個人照片" draggable="false" />
+            <span class="swipe-decision is-pass">略過</span>
+            <span class="swipe-decision is-like">喜歡</span>
+            <div class="swipe-card-topline">
+              <span class="swipe-verified"><i data-lucide="badge-check"></i>${escapeHtml(person.verified)}</span>
+              <span class="swipe-distance"><i data-lucide="map-pin"></i>${person.distance} km</span>
+            </div>
+            <div class="swipe-profile-title">
+              <h4>${escapeHtml(person.name)}<span>${person.age}</span></h4>
+              <p>${escapeHtml(person.city)} · ${escapeHtml(person.occupation)}</p>
+            </div>
+          </div>
+          <div class="swipe-card-body">
+            <p class="swipe-bio">${escapeHtml(person.bio)}</p>
+            <div class="profile-tags">${person.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>
+            <dl class="swipe-facts">
+              <div><dt>相似度</dt><dd>${person.score}%</dd></div>
+              <div><dt>目標</dt><dd>${escapeHtml(person.goal)}</dd></div>
+              <div><dt>狀態</dt><dd>${person.online ? "線上" : escapeHtml(person.lastActive)}</dd></div>
+            </dl>
+          </div>
+        </article>
       </div>
-      <span class="tag gold">AI 已排序</span>
-    </div>
-    <div class="discover-grid">
-      ${
-        results.length
-          ? results
-              .map(
-                (person) => `
-                  <article class="discover-card">
-                    <img src="${escapeHtml(person.img)}" alt="${escapeHtml(person.name)}" />
-                    <div class="discover-card-body">
-                      <div class="discover-card-title">
-                        <div>
-                          <p class="eyebrow">${escapeHtml(person.city)} · ${escapeHtml(person.occupation)}</p>
-                          <h3>${escapeHtml(person.name)}, ${person.age}</h3>
-                        </div>
-                        <strong>${person.score}%</strong>
-                      </div>
-                      <p>${escapeHtml(person.bio)}</p>
-                      <div class="fact-row">
-                        <span>${person.height} cm</span>
-                        <span>${escapeHtml(person.education)}</span>
-                        <span>${escapeHtml(person.zodiac)}</span>
-                        <span>${person.distance} km</span>
-                      </div>
-                      <div class="profile-tags">
-                        ${person.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
-                      </div>
-                      <div class="discover-actions">
-                        <button class="ghost-action" type="button" data-discover-action="chat" data-person="${person.id}">
-                          <i data-lucide="message-circle"></i>
-                          <span>打招呼</span>
-                        </button>
-                        <button class="ghost-action" type="button" data-discover-action="super" data-person="${person.id}">
-                          <i data-lucide="star"></i>
-                          <span>超喜歡</span>
-                        </button>
-                        <button class="primary-action" type="button" data-discover-action="like" data-person="${person.id}">
-                          <i data-lucide="heart"></i>
-                          <span>喜歡</span>
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                `,
-              )
-              .join("")
-          : `<div class="empty-state"><i data-lucide="search-x"></i><strong>沒有符合條件的人</strong><span>放寬年齡、距離或興趣條件再試一次。</span></div>`
-      }
-    </div>
+      <nav class="swipe-controls" aria-label="配對操作">
+        <button class="swipe-control is-pass" type="button" data-swipe-action="pass" title="略過" aria-label="略過 ${escapeHtml(person.name)}"><i data-lucide="x"></i></button>
+        <button class="swipe-control is-super" type="button" data-swipe-action="super" title="特別喜歡" aria-label="特別喜歡 ${escapeHtml(person.name)}"><i data-lucide="star"></i><span>${state.superLikes}</span></button>
+        <button class="swipe-control is-like" type="button" data-swipe-action="like" title="喜歡" aria-label="喜歡 ${escapeHtml(person.name)}"><i data-lucide="heart"></i></button>
+      </nav>
+      <p class="swipe-privacy-note"><i data-lucide="shield-check"></i>推薦資料受你的篩選條件與安全設定保護。</p>
+    </section>
   `;
 
-  $$("[data-discover-action]").forEach((button) => {
-    button.addEventListener("click", () => handleDiscoverAction(button.dataset.discoverAction, button.dataset.person));
-  });
+  $$("[data-swipe-action]").forEach((button) => button.addEventListener("click", () => resolveSwipe(button.dataset.swipeAction)));
+  wireSwipeCard(person);
   syncIcons();
+}
+
+function resolveSwipe(action) {
+  if (state.swipeAnimating) return;
+  const card = $("#swipeCard");
+  const person = personById(card?.dataset.person);
+  if (!card || !person) return;
+  if (action === "super" && state.superLikes <= 0) {
+    showToast("今天的特別喜歡已用完");
+    return;
+  }
+
+  state.swipeAnimating = true;
+  const isPositive = action === "like" || action === "super";
+  card.dataset.swipeOut = isPositive ? "right" : "left";
+  card.style.setProperty("--swipe-x", `${isPositive ? 130 : -130}vw`);
+  card.style.setProperty("--swipe-rotate", `${isPositive ? 18 : -18}deg`);
+  if (action === "super") state.superLikes -= 1;
+  if (action === "like") state.swipeLikedIds = [...new Set([...state.swipeLikedIds, person.id])];
+  if (action === "super") state.swipeSuperLikedIds = [...new Set([...state.swipeSuperLikedIds, person.id])];
+
+  window.setTimeout(() => {
+    state.swipeDismissedIds = [...new Set([...state.swipeDismissedIds, person.id])];
+    state.swipeAnimating = false;
+    scheduleSave();
+    showToast(
+      action === "pass"
+        ? `已略過 ${person.name}`
+        : action === "super"
+          ? `已送出特別喜歡給 ${person.name}`
+          : `已送出喜歡給 ${person.name}`,
+    );
+    renderDiscoverResults();
+  }, 230);
+}
+
+function wireSwipeCard(person) {
+  const card = $("#swipeCard");
+  if (!card) return;
+  let pointerId = null;
+  let startX = 0;
+  let deltaX = 0;
+  const threshold = Math.min(120, Math.max(72, card.clientWidth * 0.24));
+
+  const reset = () => {
+    card.classList.remove("is-dragging");
+    card.dataset.swipeDirection = "";
+    card.style.removeProperty("--swipe-x");
+    card.style.removeProperty("--swipe-rotate");
+  };
+
+  card.addEventListener("pointerdown", (event) => {
+    if (state.swipeAnimating || event.pointerType === "mouse" && event.button !== 0) return;
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    deltaX = 0;
+    card.setPointerCapture?.(pointerId);
+    card.classList.add("is-dragging");
+  });
+  card.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== pointerId) return;
+    deltaX = event.clientX - startX;
+    card.style.setProperty("--swipe-x", `${deltaX}px`);
+    card.style.setProperty("--swipe-rotate", `${deltaX / 20}deg`);
+    card.dataset.swipeDirection = deltaX > 24 ? "right" : deltaX < -24 ? "left" : "";
+  });
+  const finish = (event) => {
+    if (event.pointerId !== pointerId) return;
+    card.releasePointerCapture?.(pointerId);
+    pointerId = null;
+    if (Math.abs(deltaX) >= threshold) {
+      resolveSwipe(deltaX > 0 ? "like" : "pass");
+      return;
+    }
+    reset();
+  };
+  card.addEventListener("pointerup", finish);
+  card.addEventListener("pointercancel", finish);
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      resolveSwipe(event.key === "ArrowRight" ? "like" : "pass");
+    }
+  });
 }
 
 function handleDiscoverAction(action, personId) {
@@ -5630,6 +5831,10 @@ function wireEvents() {
     inviteLiveMatch();
   });
 
+  $$("[data-home-action]").forEach((button) => {
+    button.addEventListener("click", () => handleHomeQuickAction(button.dataset.homeAction));
+  });
+
   $("#startGuideBtn").addEventListener("click", () => {
     setView("profile");
     showToast("先完成檔案，系統會給出更準的配對與約會建議");
@@ -5645,6 +5850,7 @@ function wireEvents() {
 
   $("#resetFiltersBtn").addEventListener("click", () => {
     state.discoverFilters = { ...defaultDiscoverFilters };
+    state.swipeDismissedIds = [];
     renderExplore();
     showToast("篩選條件已重設");
   });
@@ -5699,6 +5905,7 @@ function init() {
   renderRooms();
   renderRoomStage();
   renderMultiplayerPanel();
+  renderHomeQuickActions();
   renderGuide();
   renderProfileEditor();
   renderProfileCard();
