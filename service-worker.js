@@ -1,4 +1,4 @@
-const CACHE_NAME = "pair-room-v10-public-supabase-config";
+const CACHE_NAME = "pair-room-v11-email-confirmation-flow";
 const APP_SHELL = [
   "./",
   "./index.html",
