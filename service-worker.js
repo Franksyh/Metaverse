@@ -1,10 +1,11 @@
-const CACHE_NAME = "pair-room-v9-real-members";
+const CACHE_NAME = "pair-room-v10-public-supabase-config";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./real-users.js",
+  "./supabase-public-config.js",
   "./manifest.json",
 ];
 

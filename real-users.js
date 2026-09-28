@@ -1,4 +1,6 @@
 const CONFIG_ENDPOINT = "/api/supabase-config";
+import { SUPABASE_PUBLIC_CONFIG } from "./supabase-public-config.js";
+
 const SUPABASE_MODULE_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 const MEMBER_REFRESH_MS = 60_000;
 const PRESENCE_REFRESH_MS = 45_000;
@@ -18,6 +20,16 @@ const $ = (selector) => document.querySelector(selector);
 
 function app() {
   return window.PairRoomSocial || null;
+}
+
+function fallbackSupabaseConfig() {
+  const url = String(SUPABASE_PUBLIC_CONFIG?.url || "").trim();
+  const anonKey = String(SUPABASE_PUBLIC_CONFIG?.anonKey || "").trim();
+  return {
+    enabled: /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url) && Boolean(anonKey),
+    url,
+    anonKey,
+  };
 }
 
 function escapeHtml(value) {
@@ -693,22 +705,15 @@ async function bootstrapAccountSystem() {
   });
   window.addEventListener("pagehide", () => stopAccountSync());
 
-  let config;
+  let config = null;
   try {
     const response = await fetch(CONFIG_ENDPOINT, { headers: { accept: "application/json" }, cache: "no-store" });
     if (!response.ok) throw new Error("設定服務無法連線");
     config = await response.json();
-  } catch {
-    document.documentElement.dataset.realUsers = "setup";
-    app()?.setAuthMode?.({ enabled: true, authenticated: false });
-    app()?.closeConnectionGate?.();
-    updateAccountButton({ signedIn: false });
-    renderNotice({
-      tone: "setup",
-      title: "真人會員系統尚未連線",
-      detail: "目前不會建立或顯示真人會員資料，完成資料庫連線後才會開放。",
-    });
-    return;
+  } catch {}
+
+  if (!config?.enabled || !config.url || !config.anonKey) {
+    config = fallbackSupabaseConfig();
   }
 
   if (!config?.enabled || !config.url || !config.anonKey) {

@@ -1,3 +1,5 @@
+import { SUPABASE_PUBLIC_CONFIG } from "../supabase-public-config.js";
+
 function applyCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -30,14 +32,6 @@ function validSupabaseUrl(value) {
   }
 }
 
-// Supabase publishable keys are intended for browser clients. All data access
-// remains governed by the Row Level Security policies in the migration. Vercel
-// environment variables take precedence so this fallback can be rotated there.
-const FALLBACK_PUBLIC_CONFIG = {
-  url: "https://gzluprbuvpjcplfryifk.supabase.co",
-  anonKey: "sb_publishable_upe_aQ0fYHDhHp9Ti8dXYw_P3RdVesH",
-};
-
 export default function handler(req, res) {
   applyCors(res);
   if (req.method === "OPTIONS") return res.status(204).end();
@@ -52,8 +46,8 @@ export default function handler(req, res) {
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   );
   const hasEnvironmentOverride = Boolean(configuredUrl || configuredKey);
-  const url = hasEnvironmentOverride ? configuredUrl : FALLBACK_PUBLIC_CONFIG.url;
-  const anonKey = hasEnvironmentOverride ? configuredKey : FALLBACK_PUBLIC_CONFIG.anonKey;
+  const url = hasEnvironmentOverride ? configuredUrl : SUPABASE_PUBLIC_CONFIG.url;
+  const anonKey = hasEnvironmentOverride ? configuredKey : SUPABASE_PUBLIC_CONFIG.anonKey;
   const enabled = validSupabaseUrl(url) && Boolean(anonKey);
 
   return sendJson(res, 200, {
