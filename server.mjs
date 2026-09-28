@@ -6,6 +6,7 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import appDataHandler from "./api/app-data.js";
 import realtimeHandler from "./api/realtime.js";
+import supabaseConfigHandler from "./api/supabase-config.js";
 import waitlistHandler from "./api/waitlist.js";
 import adminStatusHandler from "./api/admin-status.js";
 
@@ -17,6 +18,7 @@ const publicRemoteUrl = "https://pair-room-dating-site.vercel.app";
 const apiHandlers = new Map([
   ["/api/app-data", appDataHandler],
   ["/api/realtime", realtimeHandler],
+  ["/api/supabase-config", supabaseConfigHandler],
   ["/api/waitlist", waitlistHandler],
   ["/api/admin-status", adminStatusHandler],
 ]);

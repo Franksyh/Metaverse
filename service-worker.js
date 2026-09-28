@@ -1,9 +1,10 @@
-const CACHE_NAME = "pair-room-v8-webrtc-voice";
+const CACHE_NAME = "pair-room-v9-real-members";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./real-users.js",
   "./manifest.json",
 ];
 

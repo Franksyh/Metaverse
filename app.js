@@ -1,4 +1,4 @@
-const people = [
+let people = [
   {
     id: "mika",
     name: "Mika",
@@ -551,6 +551,9 @@ const marketAdvantages = [
 
 const state = {
   activeView: "rooms",
+  accountSystemEnabled: false,
+  authenticated: false,
+  authUserId: "",
   currentRoomId: "late-night",
   profileIndex: 0,
   swipeDismissedIds: [],
@@ -679,7 +682,7 @@ function escapeHtml(value) {
 }
 
 function personById(id) {
-  return people.find((person) => person.id === id) || people[0];
+  return people.find((person) => person.id === id) || null;
 }
 
 function roomById(id) {
@@ -1208,6 +1211,7 @@ function applyConnectionSettings(baseUrl, roomId, name, options = {}) {
   renderGuide();
   if (state.activeView === "growth") renderGrowth();
   closeConnectionGate();
+  window.dispatchEvent(new Event("pairroom:room-change"));
   startLiveSyncLoops();
   if (state.micStream && previousRoomId !== state.currentRoomId) {
     reconnectVoiceRoom();
@@ -1236,10 +1240,21 @@ function renderConnectionGate() {
 }
 
 function openConnectionGate() {
+  if (memberAuthenticationRequired()) return;
   document.body.classList.add("connection-pending");
   renderConnectionGate();
   $("#connectionGate")?.classList.remove("is-hidden");
   window.setTimeout(() => $("#connectionNameInput")?.focus(), 60);
+}
+
+function memberAuthenticationRequired() {
+  if (document.documentElement.dataset.realUsers === "setup") {
+    showToast("真人會員資料庫尚未連線");
+    return true;
+  }
+  if (!state.accountSystemEnabled || state.authenticated) return false;
+  window.dispatchEvent(new Event("pairroom:request-auth"));
+  return true;
 }
 
 function closeConnectionGate() {
@@ -1553,6 +1568,7 @@ function applyRealtimeData(data) {
 }
 
 async function syncRealtime(action = "heartbeat", extra = {}) {
+  if (memberAuthenticationRequired()) return;
   if (!state.connectionReady) return;
   try {
     const response = await fetch(apiUrl("/api/realtime"), {
@@ -1586,12 +1602,14 @@ async function fetchRealtimeSnapshot() {
 }
 
 async function sendLiveMessage(text) {
+  if (memberAuthenticationRequired()) return;
   const message = text.trim();
   if (!message) return;
   await syncRealtime("message", { text: message });
 }
 
 async function inviteLiveMatch(toSessionId = "", options = {}) {
+  if (memberAuthenticationRequired()) return;
   const kind = options.kind === "friend" ? "friend" : "match";
   triggerGameFeedback("hit");
   await syncRealtime("match-invite", { toSessionId, kind });
@@ -1613,6 +1631,25 @@ function renderHomeQuickActions() {
   const voiceStatus = $("#homeVoiceStatus");
   const soulStatus = $("#homeSoulStatus");
   const roomStatus = $("#homeRoomStatus");
+  const roomsTitle = $("#roomsTitle");
+
+  if (roomsTitle) {
+    roomsTitle.textContent = state.accountSystemEnabled && state.authenticated ? "真人會員多人房" : "多人連線房";
+  }
+
+  if (document.documentElement.dataset.realUsers === "setup") {
+    if (voiceStatus) voiceStatus.textContent = "會員服務尚未開通";
+    if (soulStatus) soulStatus.textContent = "等待真人帳號系統";
+    if (roomStatus) roomStatus.textContent = "等待會員資料庫連線";
+    return;
+  }
+
+  if (state.accountSystemEnabled && !state.authenticated) {
+    if (voiceStatus) voiceStatus.textContent = "登入後可加入";
+    if (soulStatus) soulStatus.textContent = "登入後探索真人會員";
+    if (roomStatus) roomStatus.textContent = "登入後隨機配對房間";
+    return;
+  }
 
   if (voiceStatus) {
     voiceStatus.textContent = !state.connectionReady
@@ -1625,10 +1662,10 @@ function renderHomeQuickActions() {
   }
   if (soulStatus) {
     soulStatus.textContent = !state.connectionReady
-      ? "填寫暱稱後可配對"
+      ? state.accountSystemEnabled ? "登入後可配對" : "填寫暱稱後可配對"
       : peers.length
-        ? `${peers.length} 位在線真人`
-        : "等待同房真人";
+        ? `${peers.length} 位在線使用者`
+        : "等待同房使用者";
   }
   if (roomStatus) {
     roomStatus.textContent = !state.connectionReady ? "填寫暱稱後可加入" : `隨機探索 ${rooms.length} 間房`;
@@ -3292,6 +3329,7 @@ function renderMultiplayerPanel() {
   const panel = $("#multiplayerPanel");
   if (!panel) return;
   const room = roomById(state.currentRoomId);
+  const memberLabel = state.accountSystemEnabled && state.authenticated ? "真人會員" : "連線";
   const isConnected = state.liveStatus === "connected";
   const participants = state.liveParticipants;
   const messages = liveSharedMessages();
@@ -3307,7 +3345,7 @@ function renderMultiplayerPanel() {
   panel.innerHTML = `
     <div class="panel-title">
       <i data-lucide="${isConnected ? "users-round" : "cloud-off"}"></i>
-      <h3>真人多人互動房</h3>
+      <h3>${memberLabel}多人互動房</h3>
     </div>
     <div class="multiplayer-status ${isConnected ? "is-connected" : ""}">
       <div>
@@ -3315,7 +3353,7 @@ function renderMultiplayerPanel() {
         <strong>${room.title}</strong>
       </div>
       <div>
-        <span>全站在線</span>
+        <span>目前連線</span>
         <strong>${state.liveOnlineCount || participants.length}</strong>
       </div>
       <div>
@@ -3334,7 +3372,7 @@ function renderMultiplayerPanel() {
     <div class="live-room-tools">
       <button class="primary-action" type="button" id="voiceToggleBtn">
         <i data-lucide="${state.micOn ? "mic-off" : "mic"}"></i>
-        <span>${state.micOn ? "離開語音" : "真人上麥"}</span>
+        <span>${state.micOn ? "離開語音" : "加入語音"}</span>
       </button>
       <button class="ghost-action" type="button" id="voiceMuteLiveBtn" ${state.micOn ? "" : "disabled"}>
         <i data-lucide="${state.muted ? "volume-2" : "mic-2"}"></i>
@@ -3342,7 +3380,7 @@ function renderMultiplayerPanel() {
       </button>
       <button class="ghost-action" type="button" id="randomMatchBtn">
         <i data-lucide="heart-handshake"></i>
-        <span>隨機配對真人</span>
+        <span>隨機配對</span>
       </button>
       <button class="ghost-action" type="button" id="nextGameBtn">
         <i data-lucide="shuffle"></i>
@@ -3381,7 +3419,7 @@ function renderMultiplayerPanel() {
                     `,
                   )
                   .join("")
-              : `<p>目前沒有其他使用者在線。用手機或另一台電腦開啟同一網址即可測試多人連線。</p>`
+              : `<p>目前沒有其他使用者在線。登入會員後，可從不同裝置加入同一房間。</p>`
           }
         </div>
       </section>
@@ -3452,7 +3490,7 @@ function renderMultiplayerPanel() {
                   .join("")
               : directVoicePeers.length
                 ? `<span class="empty-live-note">已建立 P2P 語音連線，等待對方完成上麥同步。</span>`
-                : `<span class="empty-live-note">還沒有人上麥，點「真人上麥」開始語音房。</span>`
+                : `<span class="empty-live-note">還沒有人上麥，點「加入語音」開始語音房。</span>`
           }
         </div>
       </section>
@@ -3557,8 +3595,9 @@ function renderRooms(filter = "") {
 
   $("#roomsGrid").innerHTML = filteredRooms
     .map((room) => {
-      const avatars = room.participants
-        .map((id) => `<img src="${personById(id).img}" alt="${personById(id).name}" />`)
+      const participants = room.participants.map(personById).filter(Boolean);
+      const avatars = participants
+        .map((person) => `<img src="${escapeHtml(person.img)}" alt="${escapeHtml(person.name)}" />`)
         .join("");
 
       return `
@@ -3577,7 +3616,7 @@ function renderRooms(filter = "") {
               <strong>${room.active}/${room.capacity}</strong>
             </div>
             <div class="room-footer">
-              <div class="avatar-stack">${avatars}</div>
+              <div class="avatar-stack">${avatars || `<span class="avatar-placeholder">?</span>`}</div>
               <button type="button" data-join-room="${room.id}">${state.currentRoomId === room.id ? "房內" : "加入"}</button>
             </div>
           </div>
@@ -3594,8 +3633,9 @@ function renderRooms(filter = "") {
 function renderRoomStage() {
   const room = roomById(state.currentRoomId);
   const rows = room.participants
-    .map((id, index) => {
-      const person = personById(id);
+    .map((id) => personById(id))
+    .filter(Boolean)
+    .map((person, index) => {
       return `
         <div class="participant-row">
           <div class="participant-person">
@@ -3620,7 +3660,7 @@ function renderRoomStage() {
       </div>
     </div>
     <div class="stage-body">
-      <div class="participant-list">${rows}</div>
+      <div class="participant-list">${rows || `<p class="empty-live-note">此區是房間版面預覽；真人會員會出現在上方的在線名單。</p>`}</div>
       <div class="voice-controls">
         <div class="waveform" id="waveform">
           ${Array.from({ length: 18 }, () => `<span style="height: 8px"></span>`).join("")}
@@ -3646,6 +3686,7 @@ function renderRoomStage() {
 }
 
 function joinRoom(roomId) {
+  if (memberAuthenticationRequired()) return;
   const previousRoomId = state.currentRoomId;
   state.currentRoomId = roomId;
   renderRooms($("#globalSearch").value);
@@ -3655,6 +3696,7 @@ function joinRoom(roomId) {
   const room = roomById(roomId);
   $("#statusText").textContent = `你正在 ${room.title}`;
   showToast(`已切換到「${room.title}」`);
+  window.dispatchEvent(new Event("pairroom:room-change"));
   if (state.micStream && previousRoomId !== roomId) reconnectVoiceRoom();
 }
 
@@ -3969,6 +4011,30 @@ function saveProfileChanges(showNotice = true) {
   syncProfileMini();
   renderProfilePreview();
   saveAppState();
+  if (state.accountSystemEnabled && state.authenticated) {
+    window.dispatchEvent(
+      new CustomEvent("pairroom:profile-save", {
+        detail: {
+          name: userProfile.name,
+          age: userProfile.age,
+          city: userProfile.city,
+          occupation: userProfile.occupation,
+          height: userProfile.height,
+          education: userProfile.education,
+          zodiac: userProfile.zodiac,
+          bio: userProfile.bio,
+          interests: userProfile.interests,
+          photo: userProfile.photo,
+          genderPreference: userProfile.genderPreference,
+          ageMin: userProfile.ageMin,
+          ageMax: userProfile.ageMax,
+          smoking: userProfile.smoking,
+          drinking: userProfile.drinking,
+          visibility: userProfile.visibility,
+        },
+      }),
+    );
+  }
   if (state.currentRoomId) publishVoiceState("voice-update");
   if (showNotice) showToast("個人檔案已儲存");
 }
@@ -4208,6 +4274,7 @@ function renderProfilePreview() {
 }
 
 async function toggleMic() {
+  if (memberAuthenticationRequired()) return;
   if (state.micOn) {
     await stopMic();
     syncRealtime("voice-leave", voicePayload());
@@ -4310,8 +4377,35 @@ function startWave() {
 }
 
 function renderProfileCard() {
-  const profile = people[state.profileIndex % people.length];
-  $("#currentScore").textContent = `${profile.score}%`;
+  const profile = people.length ? people[state.profileIndex % people.length] : null;
+  const score = $("#currentScore");
+  const profileCard = $("#profileCard");
+  const isRealDirectory = state.accountSystemEnabled;
+  if (!profile) {
+    if (score) score.textContent = "—";
+    profileCard.innerHTML = `
+      <section class="member-empty-state">
+        <i data-lucide="users-round"></i>
+        <p class="eyebrow">${state.authenticated ? "真人會員" : "MEMBERS ONLY"}</p>
+        <h3>${state.authenticated ? "目前沒有可顯示的真人會員" : "登入後開始探索真人會員"}</h3>
+        <p>${state.authenticated ? "公開檔案會在會員加入並完成設定後出現在這裡。" : "真人探索、滑卡與好友配對需要使用會員帳號。"}</p>
+        <button class="primary-action" type="button" id="memberEmptyAction"><i data-lucide="${state.authenticated ? "refresh-cw" : "log-in"}"></i><span>${state.authenticated ? "重新整理" : "真人登入"}</span></button>
+      </section>
+    `;
+    $("#insightList").innerHTML = "";
+    $("#marketBreakerPanel").innerHTML = "";
+    $("#memberEmptyAction")?.addEventListener("click", () => {
+      if (state.authenticated) {
+        renderProfileCard();
+        return;
+      }
+      window.dispatchEvent(new Event("pairroom:request-auth"));
+    });
+    syncIcons();
+    return;
+  }
+
+  if (score) score.textContent = isRealDirectory ? `${profile.sharedInterests?.length || 0} 個` : `${profile.score}%`;
   $("#profileCard").innerHTML = `
     <div class="profile-photo" style="background-image: url('${profile.img}')">
       <div class="profile-badge">
@@ -4329,9 +4423,19 @@ function renderProfileCard() {
         ${profile.tags.map((tag) => `<span class="tag">${tag}</span>`).join("")}
       </div>
       <div class="profile-stats">
-        <div class="stat"><span>相似度</span><strong>${profile.score}%</strong></div>
-        <div class="stat"><span>回覆率</span><strong>${86 + (state.profileIndex % 8)}%</strong></div>
-        <div class="stat"><span>距離</span><strong>${2 + state.profileIndex} km</strong></div>
+        ${
+          isRealDirectory
+            ? `
+              <div class="stat"><span>共同興趣</span><strong>${profile.sharedInterests?.length || 0} 個</strong></div>
+              <div class="stat"><span>帳號資料</span><strong>${profile.verified}</strong></div>
+              <div class="stat"><span>最近活動</span><strong>${profile.online ? "線上" : profile.lastActive}</strong></div>
+            `
+            : `
+              <div class="stat"><span>相似度</span><strong>${profile.score}%</strong></div>
+              <div class="stat"><span>回覆率</span><strong>${86 + (state.profileIndex % 8)}%</strong></div>
+              <div class="stat"><span>距離</span><strong>${2 + state.profileIndex} km</strong></div>
+            `
+        }
       </div>
       <div class="profile-actions">
         <button class="pass-btn" type="button" id="passBtn">
@@ -4551,13 +4655,14 @@ function renderDiscoverResults() {
   if (!results) return;
 
   if (!person) {
+    const memberMode = state.accountSystemEnabled;
     results.innerHTML = `
       <section class="swipe-empty-state">
         <i data-lucide="sparkles"></i>
         <p class="eyebrow">Discover</p>
-        <h3>${allResults.length ? "這一輪看完了" : "沒有符合條件的推薦"}</h3>
-        <p>${allResults.length ? "已儲存的喜歡會保留在此裝置。" : "調整篩選條件後再看看。"}</p>
-        <button class="primary-action" type="button" id="restartSwipeDeck"><i data-lucide="rotate-ccw"></i><span>重新探索</span></button>
+        <h3>${allResults.length ? "這一輪看完了" : memberMode ? "目前沒有符合條件的真人會員" : "沒有符合條件的推薦"}</h3>
+        <p>${allResults.length ? memberMode ? "你的喜歡已寫入會員帳號。" : "已儲存的喜歡會保留在此裝置。" : memberMode ? "其他會員完成公開檔案後會出現在這裡。" : "調整篩選條件後再看看。"}</p>
+        <button class="primary-action" type="button" id="restartSwipeDeck"><i data-lucide="rotate-ccw"></i><span>${memberMode ? "重新整理" : "重新探索"}</span></button>
       </section>
     `;
     $("#restartSwipeDeck")?.addEventListener("click", resetSwipeDeck);
@@ -4584,7 +4689,7 @@ function renderDiscoverResults() {
             <span class="swipe-decision is-like">喜歡</span>
             <div class="swipe-card-topline">
               <span class="swipe-verified"><i data-lucide="badge-check"></i>${escapeHtml(person.verified)}</span>
-              <span class="swipe-distance"><i data-lucide="map-pin"></i>${person.distance} km</span>
+              <span class="swipe-distance"><i data-lucide="${state.accountSystemEnabled ? "users-round" : "map-pin"}"></i>${state.accountSystemEnabled ? "真人會員" : `${person.distance} km`}</span>
             </div>
             <div class="swipe-profile-title">
               <h4>${escapeHtml(person.name)}<span>${person.age}</span></h4>
@@ -4595,9 +4700,19 @@ function renderDiscoverResults() {
             <p class="swipe-bio">${escapeHtml(person.bio)}</p>
             <div class="profile-tags">${person.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>
             <dl class="swipe-facts">
-              <div><dt>相似度</dt><dd>${person.score}%</dd></div>
-              <div><dt>目標</dt><dd>${escapeHtml(person.goal)}</dd></div>
-              <div><dt>狀態</dt><dd>${person.online ? "線上" : escapeHtml(person.lastActive)}</dd></div>
+              ${
+                state.accountSystemEnabled
+                  ? `
+                    <div><dt>共同興趣</dt><dd>${person.sharedInterests?.length || 0} 個</dd></div>
+                    <div><dt>目標</dt><dd>${escapeHtml(person.goal)}</dd></div>
+                    <div><dt>狀態</dt><dd>${person.online ? "線上" : escapeHtml(person.lastActive)}</dd></div>
+                  `
+                  : `
+                    <div><dt>相似度</dt><dd>${person.score}%</dd></div>
+                    <div><dt>目標</dt><dd>${escapeHtml(person.goal)}</dd></div>
+                    <div><dt>狀態</dt><dd>${person.online ? "線上" : escapeHtml(person.lastActive)}</dd></div>
+                  `
+              }
             </dl>
           </div>
         </article>
@@ -4637,6 +4752,13 @@ function resolveSwipe(action) {
 
   window.setTimeout(() => {
     state.swipeDismissedIds = [...new Set([...state.swipeDismissedIds, person.id])];
+    if (state.accountSystemEnabled && state.authenticated) {
+      window.dispatchEvent(
+        new CustomEvent("pairroom:swipe", {
+          detail: { targetId: person.id, action },
+        }),
+      );
+    }
     state.swipeAnimating = false;
     scheduleSave();
     showToast(
@@ -4702,6 +4824,7 @@ function wireSwipeCard(person) {
 
 function handleDiscoverAction(action, personId) {
   const person = personById(personId);
+  if (!person) return;
   if (action === "chat") {
     startConversationWith(personId, `嗨 ${person.name}，我也對${person.tags[0]}很有興趣。`);
     return;
@@ -4715,6 +4838,15 @@ function handleDiscoverAction(action, personId) {
 
 function startConversationWith(personId, starter) {
   const person = personById(personId);
+  if (!person) {
+    showToast("找不到這位會員的公開資料");
+    return;
+  }
+  if (state.accountSystemEnabled) {
+    if (memberAuthenticationRequired()) return;
+    window.dispatchEvent(new CustomEvent("pairroom:friend-request", { detail: { targetId: person.id } }));
+    return;
+  }
   const conversationId = `${person.id}-chat`;
   let conversation = conversations.find((item) => item.id === conversationId);
   if (!conversation) {
@@ -4746,6 +4878,7 @@ function startConversationWith(personId, starter) {
 
 function sendSuperLike(personId) {
   const person = personById(personId);
+  if (!person) return;
   if (state.superLikes <= 0) {
     showToast("今天的超級喜歡已用完，可到 AI/VIP 補充");
     return;
@@ -4802,14 +4935,14 @@ function renderNearby() {
         return `
           <button class="map-pin ${person.online ? "is-online" : ""}" style="left: ${left}; top: ${top}" type="button" data-map-person="${person.id}">
             <img src="${escapeHtml(person.img)}" alt="${escapeHtml(person.name)}" />
-            <span>${person.distance} km</span>
+            <span>${state.accountSystemEnabled ? (person.online ? "線上" : person.lastActive) : `${person.distance} km`}</span>
           </button>
         `;
       })
       .join("")}
     <div class="map-caption">
       <strong>${sorted.filter((person) => person.online).length} 人在線</strong>
-      <span>距離根據示範資料模擬</span>
+      <span>${state.accountSystemEnabled ? "只顯示已公開的真人帳號" : "距離根據示範資料模擬"}</span>
     </div>
   `;
 
@@ -4829,7 +4962,7 @@ function renderNearby() {
                   <strong>${escapeHtml(person.name)}, ${person.age}</strong>
                   <span class="${person.online ? "online-text" : ""}">${escapeHtml(person.online ? "線上" : person.lastActive)}</span>
                 </div>
-                <p>${escapeHtml(person.city)} · ${person.distance} km · ${escapeHtml(person.goal)}</p>
+                <p>${escapeHtml(person.city)}${state.accountSystemEnabled ? "" : ` · ${person.distance} km`} · ${escapeHtml(person.goal)}</p>
                 <div class="profile-tags">
                   ${person.tags.slice(0, 3).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
                 </div>
@@ -4854,7 +4987,12 @@ function renderNearby() {
   $$("[data-map-person]").forEach((button) => {
     button.addEventListener("click", () => {
       const person = personById(button.dataset.mapPerson);
-      showToast(`${person.name} 距離你 ${person.distance} km，最近狀態：${person.online ? "線上" : person.lastActive}`);
+      if (!person) return;
+      showToast(
+        state.accountSystemEnabled
+          ? `${person.name} 最近狀態：${person.online ? "線上" : person.lastActive}`
+          : `${person.name} 距離你 ${person.distance} km，最近狀態：${person.online ? "線上" : person.lastActive}`,
+      );
     });
   });
   $$("[data-nearby-action]").forEach((button) => {
@@ -4865,6 +5003,7 @@ function renderNearby() {
 
 function handleNearbyAction(action, personId) {
   const person = personById(personId);
+  if (!person) return;
   if (action === "voice") {
     startConversationWith(personId, `看到你也在附近，要不要先用語音聊 5 分鐘？`);
     return;
@@ -4873,13 +5012,27 @@ function handleNearbyAction(action, personId) {
 }
 
 function likeProfile(isSuper) {
-  const profile = people[state.profileIndex % people.length];
+  const profile = people.length ? people[state.profileIndex % people.length] : null;
+  if (!profile) return;
   if (isSuper && state.superLikes <= 0) {
     showToast("今天的超級喜歡已用完，可到 AI/VIP 補充");
     return;
   }
   if (isSuper) {
     state.superLikes -= 1;
+  }
+  if (state.accountSystemEnabled && state.authenticated) {
+    const action = isSuper ? "super" : "like";
+    state.swipeDismissedIds = [...new Set([...state.swipeDismissedIds, profile.id])];
+    if (isSuper) state.swipeSuperLikedIds = [...new Set([...state.swipeSuperLikedIds, profile.id])];
+    else state.swipeLikedIds = [...new Set([...state.swipeLikedIds, profile.id])];
+    window.dispatchEvent(new CustomEvent("pairroom:swipe", { detail: { targetId: profile.id, action } }));
+    state.profileIndex = people.length ? (state.profileIndex + 1) % people.length : 0;
+    renderProfileCard();
+    renderDiscoverResults();
+    scheduleSave();
+    showToast(isSuper ? "已送出特別喜歡" : "已送出喜歡");
+    return;
   }
   const conversationId = `${profile.id}-chat`;
   if (!conversations.some((conversation) => conversation.id === conversationId)) {
@@ -4906,7 +5059,7 @@ function likeProfile(isSuper) {
 }
 
 function nextProfile(message) {
-  state.profileIndex += 1;
+  state.profileIndex = people.length ? state.profileIndex + 1 : 0;
   renderProfileCard();
   if (message) showToast(message);
 }
@@ -5009,6 +5162,7 @@ async function sendMessage(text) {
 }
 
 function momentAuthor(moment) {
+  if (moment?.author && typeof moment.author === "object") return moment.author;
   if (moment.authorId === "me") {
     return {
       id: "me",
@@ -5018,14 +5172,23 @@ function momentAuthor(moment) {
       tags: userProfile.interests,
     };
   }
-  return personById(moment.authorId);
+  return (
+    personById(moment.authorId) || {
+      id: moment.authorId || "member",
+      name: "會員",
+      img: DEFAULT_PROFILE_PHOTO,
+      city: "未填寫",
+      tags: [],
+    }
+  );
 }
 
 function renderMoments() {
   const search = state.globalSearch.trim().toLowerCase();
   const visible = moments.filter((moment) => {
     const author = momentAuthor(moment);
-    const content = `${moment.text} ${moment.tag} ${author.name} ${author.city} ${author.tags.join(" ")}`.toLowerCase();
+    const authorTags = Array.isArray(author.tags) ? author.tags : [];
+    const content = `${moment.text} ${moment.tag} ${author.name} ${author.city} ${authorTags.join(" ")}`.toLowerCase();
     return (state.momentFilter === "全部" || moment.tag === state.momentFilter) && (!search || content.includes(search));
   });
 
@@ -5037,6 +5200,8 @@ function renderMoments() {
     ? visible
         .map((moment) => {
           const author = momentAuthor(moment);
+          const comments = Array.isArray(moment.comments) ? moment.comments : [];
+          const isOwnMoment = moment.authorId === "me" || (state.authenticated && moment.authorId === state.authUserId);
           return `
             <article class="moment-card">
               <div class="moment-head">
@@ -5050,10 +5215,10 @@ function renderMoments() {
               <p>${escapeHtml(moment.text)}</p>
               ${moment.img ? `<img class="moment-photo" src="${escapeHtml(moment.img)}" alt="${escapeHtml(author.name)} 的動態照片" />` : ""}
               <div class="moment-comments">
-                ${moment.comments.map((comment) => `<span>${escapeHtml(comment)}</span>`).join("") || "<span>還沒有留言，成為第一個開話題的人。</span>"}
+                ${comments.map((comment) => `<span>${escapeHtml(comment)}</span>`).join("") || "<span>還沒有留言，成為第一個開話題的人。</span>"}
               </div>
               <div class="moment-actions">
-                <button class="ghost-action" type="button" data-moment-action="like" data-moment="${moment.id}">
+                <button class="ghost-action ${moment.likedByMe ? "is-liked" : ""}" type="button" data-moment-action="like" data-moment="${moment.id}">
                   <i data-lucide="heart"></i>
                   <span>${moment.likes}</span>
                 </button>
@@ -5062,14 +5227,16 @@ function renderMoments() {
                   <span>留言</span>
                 </button>
                 ${
-                  author.id === "me"
-                    ? `<button class="ghost-action" type="button" data-moment-action="boost" data-moment="${moment.id}">
+                  isOwnMoment
+                    ? moment.isRealPost
+                      ? ""
+                      : `<button class="ghost-action" type="button" data-moment-action="boost" data-moment="${moment.id}">
                         <i data-lucide="rocket"></i>
                         <span>推廣</span>
                       </button>`
-                    : `<button class="primary-action" type="button" data-moment-action="chat" data-moment="${moment.id}">
-                        <i data-lucide="send"></i>
-                        <span>聊這篇</span>
+                    : `<button class="primary-action" type="button" data-moment-action="${moment.isRealPost ? "connect" : "chat"}" data-moment="${moment.id}">
+                        <i data-lucide="${moment.isRealPost ? "user-round-plus" : "send"}"></i>
+                        <span>${moment.isRealPost ? "認識對方" : "聊這篇"}</span>
                       </button>`
                 }
               </div>
@@ -5077,7 +5244,7 @@ function renderMoments() {
           `;
         })
         .join("")
-    : `<div class="empty-state"><i data-lucide="image-off"></i><strong>沒有符合條件的動態</strong><span>切換分類或清除搜尋即可看見更多貼文。</span></div>`;
+    : `<div class="empty-state"><i data-lucide="image-off"></i><strong>${state.accountSystemEnabled ? "還沒有真人會員動態" : "沒有符合條件的動態"}</strong><span>${state.accountSystemEnabled ? "完成公開個人檔案後，發布第一篇真實動態。" : "切換分類或清除搜尋即可看見更多貼文。"}</span></div>`;
 
   $$("[data-moment-action]").forEach((button) => {
     button.addEventListener("click", () => handleMomentAction(button.dataset.momentAction, button.dataset.moment));
@@ -5089,7 +5256,13 @@ function handleMomentAction(action, momentId) {
   const moment = moments.find((item) => item.id === momentId);
   if (!moment) return;
   const author = momentAuthor(moment);
+  const usesRealFeed = state.accountSystemEnabled && Boolean(moment.isRealPost);
+  if (usesRealFeed && memberAuthenticationRequired()) return;
   if (action === "like") {
+    if (usesRealFeed) {
+      window.dispatchEvent(new CustomEvent("pairroom:post-like", { detail: { postId: moment.id } }));
+      return;
+    }
     moment.likes += 1;
     renderMoments();
     scheduleSave();
@@ -5097,6 +5270,17 @@ function handleMomentAction(action, momentId) {
     return;
   }
   if (action === "comment") {
+    if (usesRealFeed) {
+      const text = window.prompt("留下想說的話（最多 280 字）", "");
+      const body = String(text || "").trim();
+      if (!body) return;
+      if (body.length > 280) {
+        showToast("留言最多 280 個字");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("pairroom:post-comment", { detail: { postId: moment.id, body } }));
+      return;
+    }
     moment.comments.push(`${userProfile.name}：這個話題我想多聽一點`);
     renderMoments();
     scheduleSave();
@@ -5106,6 +5290,10 @@ function handleMomentAction(action, momentId) {
   if (action === "boost") {
     startBoost();
     setView("ai");
+    return;
+  }
+  if (action === "connect" && usesRealFeed) {
+    window.dispatchEvent(new CustomEvent("pairroom:friend-request", { detail: { targetId: author.id } }));
     return;
   }
   startConversationWith(author.id, `我看到你的動態：「${moment.text.slice(0, 22)}...」想接著聊。`);
@@ -5118,6 +5306,30 @@ function handleMomentSubmit(event) {
   const img = $("#momentImageUrl").value.trim();
   if (!text) {
     showToast("先寫一段動態內容再發布");
+    return;
+  }
+  if (state.accountSystemEnabled) {
+    if (memberAuthenticationRequired()) return;
+    if (!userProfile.visibility) {
+      showToast("請先在個人檔案開啟公開狀態，才能發布真人動態");
+      return;
+    }
+    if (text.length > 800) {
+      showToast("動態最多 800 個字");
+      return;
+    }
+    if (img && !/^https?:\/\//i.test(img)) {
+      showToast("照片網址需使用 http 或 https");
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("pairroom:post-create", { detail: { text, tag, imageUrl: img } }));
+    $("#momentForm").reset();
+    state.momentFilter = "全部";
+    showToast("正在發布真人動態");
+    return;
+  }
+  if (document.documentElement.dataset.realUsers === "setup") {
+    showToast("真人會員資料庫尚未連線");
     return;
   }
   moments.unshift({
@@ -5173,6 +5385,18 @@ function aiAdviceFor(person) {
 
 function renderAiBoost() {
   const target = personById(state.aiTargetId);
+  if (!target) {
+    $("#aiCoachPanel").innerHTML = `
+      <div class="member-empty-state compact-empty-state">
+        <i data-lucide="bot"></i>
+        <h3>等待真人會員資料</h3>
+        <p>登入後，AI 才會以公開真人檔案提供建議。</p>
+      </div>
+    `;
+    $("#boostPanel").innerHTML = "";
+    syncIcons();
+    return;
+  }
   const advice = aiAdviceFor(target);
   const active = boostIsActive();
   $("#aiCoachPanel").innerHTML = `
@@ -5284,6 +5508,10 @@ function renderAiBoost() {
 
 function handleAiAction(action) {
   const target = personById(state.aiTargetId);
+  if (!target) {
+    showToast("目前沒有可分析的真人會員");
+    return;
+  }
   const advice = aiAdviceFor(target);
   if (action === "send-opener") {
     startConversationWith(target.id, advice.opener);
@@ -5897,6 +6125,106 @@ function wireEvents() {
   $("#installAppBtn").addEventListener("click", installApp);
   window.addEventListener("beforeunload", saveAppState);
 }
+
+function renderMemberDirectory() {
+  syncProfileMini();
+  renderRooms(state.globalSearch);
+  renderRoomStage();
+  renderMultiplayerPanel();
+  renderProfileEditor();
+  renderProfilePreview();
+  renderProfileCard();
+  renderExplore();
+  renderNearby();
+  renderChat();
+  renderMoments();
+  renderAiBoost();
+  renderHomeQuickActions();
+}
+
+function clearDemoSocialData() {
+  people = [];
+  moments.splice(0, moments.length);
+  conversations.splice(0, conversations.length);
+  state.activeConversationId = "";
+  state.aiTargetId = "";
+  state.profileIndex = 0;
+  state.swipeDismissedIds = [];
+  state.swipeLikedIds = [];
+  state.swipeSuperLikedIds = [];
+}
+
+function setAuthMode({ enabled = false, authenticated = false } = {}) {
+  state.accountSystemEnabled = Boolean(enabled);
+  state.authenticated = Boolean(authenticated);
+  if (state.accountSystemEnabled && !state.authenticated) {
+    state.authUserId = "";
+    clearDemoSocialData();
+    closeConnectionGate();
+  }
+  renderMemberDirectory();
+}
+
+function activateRealUsers({ user, profile, people: memberPeople, moments: memberMoments } = {}) {
+  state.accountSystemEnabled = true;
+  state.authenticated = true;
+  state.authUserId = String(user?.id || "");
+  if (profile && typeof profile === "object") Object.assign(userProfile, profile);
+  normalizeUserProfile();
+  people = Array.isArray(memberPeople) ? memberPeople : [];
+  moments.splice(0, moments.length, ...(Array.isArray(memberMoments) ? memberMoments : []));
+  conversations.splice(0, conversations.length);
+  state.activeConversationId = "";
+  state.aiTargetId = people[0]?.id || "";
+  state.profileIndex = 0;
+  state.swipeDismissedIds = [];
+  state.swipeLikedIds = [];
+  state.swipeSuperLikedIds = [];
+
+  if (!state.connectionReady) {
+    applyConnectionSettings(defaultConnectionBaseUrl(), state.currentRoomId, userProfile.name, { save: true });
+  } else {
+    saveConnectionSettings();
+    syncRealtime("heartbeat");
+  }
+  closeConnectionGate();
+  renderMemberDirectory();
+}
+
+function replaceRealPeople(memberPeople) {
+  if (!state.accountSystemEnabled || !state.authenticated) return;
+  people = Array.isArray(memberPeople) ? memberPeople : [];
+  if (!people.some((person) => person.id === state.aiTargetId)) state.aiTargetId = people[0]?.id || "";
+  if (state.profileIndex >= people.length) state.profileIndex = 0;
+  renderProfileCard();
+  renderDiscoverResults();
+  renderNearby();
+  if (state.activeView === "ai") renderAiBoost();
+}
+
+function replaceRealMoments(memberMoments) {
+  if (!state.accountSystemEnabled || !state.authenticated) return;
+  moments.splice(0, moments.length, ...(Array.isArray(memberMoments) ? memberMoments : []));
+  renderMoments();
+}
+
+window.PairRoomSocial = {
+  showToast,
+  closeConnectionGate,
+  setAuthMode,
+  activateRealUsers,
+  replaceRealPeople,
+  replaceRealMoments,
+  getRealtimeIdentity() {
+    return {
+      sessionId: ensureSessionId(),
+      roomId: state.currentRoomId,
+      device: currentDeviceType(),
+      micOn: state.micOn,
+      muted: state.muted,
+    };
+  },
+};
 
 function init() {
   loadSavedState();

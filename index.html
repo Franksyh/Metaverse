@@ -44,6 +44,10 @@
             <i data-lucide="layers-3"></i>
             <span>滑卡</span>
           </button>
+          <button class="nav-item" data-view="moments">
+            <i data-lucide="messages-square"></i>
+            <span>動態</span>
+          </button>
           <button class="nav-item" data-view="games">
             <i data-lucide="gamepad-2"></i>
             <span>遊戲廳</span>
@@ -80,6 +84,10 @@
             <i data-lucide="search"></i>
             <input id="globalSearch" type="search" placeholder="搜尋房間、興趣或暱稱" />
           </label>
+          <button class="ghost-action account-action" type="button" id="authAccountBtn">
+            <i data-lucide="user-round"></i>
+            <span id="authAccountLabel">會員登入</span>
+          </button>
           <button class="primary-action" type="button" id="quickMatchBtn">
             <i data-lucide="zap"></i>
             <span>快速配對</span>
@@ -87,7 +95,7 @@
         </header>
 
         <section class="view is-active" id="rooms-view" aria-labelledby="roomsTitle">
-          <section class="home-quick-actions" aria-label="真人互動入口">
+          <section class="home-quick-actions" aria-label="互動入口">
             <button class="home-quick-action is-voice" type="button" data-home-action="voice">
               <span class="home-action-icon"><i data-lucide="audio-lines"></i></span>
               <span class="home-action-copy">
@@ -113,10 +121,11 @@
               <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
             </button>
           </section>
+          <section class="real-user-notice" id="realUserNotice" aria-live="polite" hidden></section>
           <div class="section-heading">
             <div>
               <p class="eyebrow">Live Room</p>
-              <h2 id="roomsTitle">真人多人連線房</h2>
+              <h2 id="roomsTitle">多人連線房</h2>
             </div>
             <div class="segmented-control" role="tablist" aria-label="房間分類">
               <button class="is-active" type="button">推薦</button>
@@ -424,7 +433,7 @@
           <p>不同地點、不同 IP 的電腦開啟公開網站後，輸入相同房號即可進入同一房間。</p>
         </div>
         <label class="connection-field">
-          <span>你的真人暱稱</span>
+          <span>顯示暱稱</span>
           <input id="connectionNameInput" type="text" autocomplete="nickname" maxlength="40" placeholder="例如：Frank" required />
         </label>
         <label class="connection-field">
@@ -466,5 +475,6 @@
     ></script>
     <script src="app.js"></script>
     <script src="club.js"></script>
+    <script type="module" src="real-users.js"></script>
   </body>
 </html>
