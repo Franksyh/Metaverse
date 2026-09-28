@@ -16,7 +16,7 @@ let memberRefreshTimer = null;
 let presenceRefreshTimer = null;
 let socialRealtimeChannel = null;
 let socialRefreshTimer = null;
-let socialRefreshState = { members: false, posts: false };
+let socialRefreshState = { members: false, posts: false, conversations: false };
 let pendingVerificationEmail = "";
 let accountGate = null;
 
@@ -72,6 +72,12 @@ function relativeActivity(value) {
   if (minutes < 60) return `${minutes} 分鐘前`;
   if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} 小時前`;
   return `${Math.floor(minutes / (24 * 60))} 天前`;
+}
+
+function messageTime(value) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return "現在";
+  return new Date(timestamp).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
 }
 
 function normalizeInterests(value) {
@@ -405,6 +411,75 @@ async function loadPosts() {
   return posts.map((post) => appMomentFromRecord(post, profilesById, likedPostIds, commentsByPost));
 }
 
+async function loadDirectConversations() {
+  if (!authUser) return [];
+
+  const friendshipFilter = `requester_id.eq.${authUser.id},recipient_id.eq.${authUser.id}`;
+  const { data: friendships, error: friendshipsError } = await supabase
+    .from("friendships")
+    .select("requester_id, recipient_id, updated_at")
+    .eq("status", "accepted")
+    .or(friendshipFilter);
+  if (friendshipsError) throw friendshipsError;
+
+  const friendIds = [...new Set((friendships || []).map((friendship) => (friendship.requester_id === authUser.id ? friendship.recipient_id : friendship.requester_id)))];
+  if (!friendIds.length) return [];
+
+  const now = new Date().toISOString();
+  const messageFilter = `sender_id.eq.${authUser.id},recipient_id.eq.${authUser.id}`;
+  const [profilesResult, messagesResult, presenceResult] = await Promise.all([
+    supabase.from("profiles").select("id, display_name, avatar_url, city, interests, last_seen_at").in("id", friendIds),
+    supabase
+      .from("direct_messages")
+      .select("id, sender_id, recipient_id, body, created_at, read_at")
+      .or(messageFilter)
+      .order("created_at", { ascending: true })
+      .limit(500),
+    supabase.from("room_presence").select("user_id").in("user_id", friendIds).gt("expires_at", now),
+  ]);
+  if (profilesResult.error) throw profilesResult.error;
+  if (messagesResult.error) throw messagesResult.error;
+  if (presenceResult.error) throw presenceResult.error;
+
+  const profilesById = new Map((profilesResult.data || []).map((profile) => [profile.id, profile]));
+  const onlineIds = new Set((presenceResult.data || []).map((presence) => presence.user_id));
+  const messagesByFriend = new Map();
+  (messagesResult.data || []).forEach((message) => {
+    const peerId = message.sender_id === authUser.id ? message.recipient_id : message.sender_id;
+    if (!friendIds.includes(peerId)) return;
+    const entries = messagesByFriend.get(peerId) || [];
+    entries.push(message);
+    messagesByFriend.set(peerId, entries);
+  });
+
+  return friendIds
+    .map((peerId) => {
+      const profile = profilesById.get(peerId);
+      const messages = messagesByFriend.get(peerId) || [];
+      const latest = messages.at(-1);
+      const friendship = (friendships || []).find((item) => item.requester_id === peerId || item.recipient_id === peerId);
+      const peerName = String(profile?.display_name || "好友").slice(0, 40);
+      return {
+        id: `direct:${peerId}`,
+        type: "direct",
+        peerId,
+        title: peerName,
+        subtitle: onlineIds.has(peerId) ? "線上 · 真人好友" : "真人好友",
+        img: avatarFor(profile || { id: peerId, display_name: peerName }),
+        unread: messages.filter((message) => message.recipient_id === authUser.id && !message.read_at).length,
+        lastMessageAt: latest?.created_at || friendship?.updated_at || "",
+        messages: messages.map((message) => ({
+          id: message.id,
+          from: message.sender_id === authUser.id ? "我" : peerName,
+          time: messageTime(message.created_at),
+          text: String(message.body || ""),
+          mine: message.sender_id === authUser.id,
+        })),
+      };
+    })
+    .sort((left, right) => Date.parse(right.lastMessageAt || 0) - Date.parse(left.lastMessageAt || 0));
+}
+
 async function refreshMembers() {
   if (!authUser) return;
   try {
@@ -420,6 +495,18 @@ async function refreshPosts() {
     app()?.replaceRealMoments?.(await loadPosts());
   } catch {
     // A background refresh should not interrupt the member's current screen.
+  }
+}
+
+async function refreshDirectConversations() {
+  if (!authUser) return [];
+  try {
+    const conversations = await loadDirectConversations();
+    app()?.replaceRealConversations?.(conversations);
+    return conversations;
+  } catch {
+    // The member can keep using the current conversation while a refresh retries later.
+    return [];
   }
 }
 
@@ -450,25 +537,28 @@ async function touchPresence() {
   if (profileResult.error) throw profileResult.error;
 }
 
-function queueSocialRefresh({ members = false, posts = false } = {}) {
+function queueSocialRefresh({ members = false, posts = false, conversations = false } = {}) {
   if (!authUser) return;
   socialRefreshState.members ||= members;
   socialRefreshState.posts ||= posts;
+  socialRefreshState.conversations ||= conversations;
   window.clearTimeout(socialRefreshTimer);
   socialRefreshTimer = window.setTimeout(() => {
     const refreshMembersNow = socialRefreshState.members;
     const refreshPostsNow = socialRefreshState.posts;
-    socialRefreshState = { members: false, posts: false };
+    const refreshConversationsNow = socialRefreshState.conversations;
+    socialRefreshState = { members: false, posts: false, conversations: false };
     socialRefreshTimer = null;
     if (refreshMembersNow) void refreshMembers();
     if (refreshPostsNow) void refreshPosts();
+    if (refreshConversationsNow) void refreshDirectConversations();
   }, 250);
 }
 
 function stopSocialRealtime() {
   window.clearTimeout(socialRefreshTimer);
   socialRefreshTimer = null;
-  socialRefreshState = { members: false, posts: false };
+  socialRefreshState = { members: false, posts: false, conversations: false };
   const channel = socialRealtimeChannel;
   socialRealtimeChannel = null;
   if (supabase && channel) void supabase.removeChannel(channel);
@@ -481,7 +571,7 @@ function startSocialRealtime() {
   socialRealtimeChannel = supabase
     .channel(`pair-room-social-${authUser.id}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
-      queueSocialRefresh({ members: true, posts: true });
+      queueSocialRefresh({ members: true, posts: true, conversations: true });
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "room_presence" }, () => {
       queueSocialRefresh({ members: true });
@@ -492,6 +582,12 @@ function startSocialRealtime() {
     .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => {
       queueSocialRefresh({ posts: true });
     })
+    .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
+      queueSocialRefresh({ conversations: true });
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "direct_messages" }, () => {
+      queueSocialRefresh({ conversations: true });
+    })
     .subscribe();
 }
 
@@ -501,6 +597,7 @@ function startAccountSync() {
   memberRefreshTimer = window.setInterval(() => {
     refreshMembers();
     refreshPosts();
+    refreshDirectConversations();
   }, MEMBER_REFRESH_MS);
   presenceRefreshTimer = window.setInterval(() => {
     touchPresence().catch(() => {});
@@ -525,12 +622,13 @@ async function activateSession(user) {
     authUser = user;
     profileRecord = await ensureProfile(user);
     await touchPresence();
-    const [members, moments] = await Promise.all([loadMembers(), loadPosts()]);
+    const [members, moments, conversations] = await Promise.all([loadMembers(), loadPosts(), loadDirectConversations()]);
     app()?.activateRealUsers?.({
       user,
       profile: appProfileFromRecord(profileRecord, user),
       people: members,
       moments,
+      conversations,
     });
     updateAccountButton({ signedIn: true });
     renderNotice({
@@ -716,12 +814,16 @@ async function requestFriendship(event) {
     }
 
     if (existing.status === "accepted") {
+      await refreshDirectConversations();
+      app()?.openFriendChat?.(targetId);
       showToast("你們已是好友");
       return;
     }
     if (existing.status === "pending" && existing.recipient_id === authUser.id) {
       const { error } = await supabase.from("friendships").update({ status: "accepted" }).eq("id", existing.id);
       if (error) throw error;
+      await refreshDirectConversations();
+      app()?.openFriendChat?.(targetId);
       showToast("已接受對方的認識邀請");
       return;
     }
@@ -732,6 +834,44 @@ async function requestFriendship(event) {
     showToast("目前無法建立這個好友關係");
   } catch {
     showToast("認識邀請暫時無法同步，請稍後再試");
+  }
+}
+
+async function sendDirectMessage(event) {
+  if (!supabase || !authUser) return;
+  const recipientId = String(event.detail?.recipientId || "");
+  const body = String(event.detail?.body || "").trim();
+  if (!recipientId || recipientId === authUser.id || !body || body.length > 1000) return;
+
+  try {
+    const { error } = await supabase.from("direct_messages").insert({
+      sender_id: authUser.id,
+      recipient_id: recipientId,
+      body,
+    });
+    if (error) throw error;
+    await refreshDirectConversations();
+  } catch {
+    showToast("訊息暫時無法送出，請確認你們仍是好友後再試");
+  }
+}
+
+async function markDirectMessagesRead(event) {
+  if (!supabase || !authUser) return;
+  const peerId = String(event.detail?.peerId || "");
+  if (!peerId || peerId === authUser.id) return;
+
+  try {
+    const { error } = await supabase
+      .from("direct_messages")
+      .update({ read_at: new Date().toISOString() })
+      .eq("sender_id", peerId)
+      .eq("recipient_id", authUser.id)
+      .is("read_at", null);
+    if (error) throw error;
+    await refreshDirectConversations();
+  } catch {
+    // A failed read receipt should never block the conversation itself.
   }
 }
 
@@ -803,6 +943,8 @@ async function bootstrapAccountSystem() {
   window.addEventListener("pairroom:post-like", togglePostLikeInDatabase);
   window.addEventListener("pairroom:post-comment", addPostCommentInDatabase);
   window.addEventListener("pairroom:friend-request", requestFriendship);
+  window.addEventListener("pairroom:direct-message", sendDirectMessage);
+  window.addEventListener("pairroom:direct-message-read", markDirectMessagesRead);
   window.addEventListener("pairroom:room-change", () => {
     touchPresence().catch(() => {});
   });

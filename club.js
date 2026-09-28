@@ -31,27 +31,37 @@
   }, true);
   function enhance() {
     if (!arena || arena.querySelector('.club-toolbar')) return;
-    const library = arena.querySelector('.party-game-library');
+    const groupedLibrary = arena.querySelector('.party-game-library-groups');
+    const library = groupedLibrary || arena.querySelector('.party-game-library');
     const layout = arena.querySelector('.party-game-layout');
     if (!library || !layout) return;
     const intro = arena.querySelector('.party-game-intro');
-    intro.querySelector('h3').textContent = '緣房間遊戲俱樂部';
-    intro.querySelector('p').textContent = '免費遊玩 · 娛樂積分不可兌現';
-    const share = document.createElement('button');
-    share.className = 'ghost-action';
-    share.type = 'button';
-    share.textContent = '邀請朋友';
-    share.addEventListener('click', async () => {
-      const url = new URL(location.href);
-      url.searchParams.set('room', state.currentRoomId);
-      try {
-        await navigator.clipboard.writeText(url.href);
-        showToast('已複製房間連結');
-      } catch {
-        window.prompt('房間邀請連結', url.href);
-      }
-    });
-    intro.querySelector('.party-intro-tools').prepend(share);
+    intro?.querySelector('h3') && (intro.querySelector('h3').textContent = '緣房間遊戲俱樂部');
+    intro?.querySelector('p') && (intro.querySelector('p').textContent = '免費遊玩 · 娛樂積分不可兌現');
+    if (intro && !intro.querySelector('[data-club-share]')) {
+      const share = document.createElement('button');
+      share.className = 'ghost-action';
+      share.type = 'button';
+      share.dataset.clubShare = 'true';
+      share.textContent = '邀請朋友';
+      share.addEventListener('click', async () => {
+        const url = new URL(location.href);
+        url.searchParams.set('room', state.currentRoomId);
+        try {
+          await navigator.clipboard.writeText(url.href);
+          showToast('已複製房間連結');
+        } catch {
+          window.prompt('房間邀請連結', url.href);
+        }
+      });
+      intro.querySelector('.party-intro-tools')?.prepend(share);
+    }
+
+    // The current lobby groups games into native disclosure sections. The
+    // legacy toolbar assumes a single direct child and would otherwise move
+    // nested nodes out of their group while the lobby is rendering.
+    if (groupedLibrary) return;
+
     arena.insertBefore(layout, library);
     if (layout.querySelector('.live-game-visual')) layout.querySelector('.party-game-hero')?.remove();
     const toolbar = document.createElement('div');

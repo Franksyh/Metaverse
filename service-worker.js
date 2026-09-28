@@ -1,4 +1,4 @@
-const CACHE_NAME = "pair-room-v12-fresh-app-shell";
+const CACHE_NAME = "pair-room-v13-social-app-shell";
 const APP_SHELL = [
   "./",
   "./index.html",

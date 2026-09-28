@@ -28,35 +28,30 @@
         </div>
 
         <nav class="main-nav" aria-label="主要功能">
-          <button class="nav-item is-active" data-view="rooms">
-            <i data-lucide="radio"></i>
-            <span>房間</span>
-          </button>
-          <button class="nav-item" data-view="guide">
-            <i data-lucide="compass"></i>
-            <span>使用</span>
-          </button>
-          <button class="nav-item" data-view="profile">
-            <i data-lucide="user-round"></i>
-            <span>檔案</span>
-          </button>
-          <button class="nav-item" data-view="explore">
+          <button class="nav-item is-active" data-view="explore">
             <i data-lucide="layers-3"></i>
-            <span>滑卡</span>
+            <span>首頁</span>
+          </button>
+          <button class="nav-item" data-view="rooms">
+            <i data-lucide="radio"></i>
+            <span>派對</span>
+          </button>
+          <button class="nav-item" data-view="chat">
+            <i data-lucide="message-circle"></i>
+            <span>訊息</span>
           </button>
           <button class="nav-item" data-view="moments">
             <i data-lucide="messages-square"></i>
-            <span>動態</span>
+            <span>論壇</span>
           </button>
           <button class="nav-item" data-view="games">
             <i data-lucide="gamepad-2"></i>
-            <span>遊戲廳</span>
+            <span>遊戲</span>
           </button>
-          <button class="nav-item" data-view="safety">
-            <i data-lucide="shield-check"></i>
-            <span>安全</span>
+          <button class="nav-item" data-view="profile">
+            <i data-lucide="user-round"></i>
+            <span>我的</span>
           </button>
-          <button class="nav-item" data-view="membership"><i data-lucide="crown"></i><span>會員</span></button>
         </nav>
 
         <div class="profile-mini">
@@ -94,38 +89,12 @@
           </button>
         </header>
 
-        <section class="view is-active" id="rooms-view" aria-labelledby="roomsTitle">
-          <section class="home-quick-actions" aria-label="互動入口">
-            <button class="home-quick-action is-voice" type="button" data-home-action="voice">
-              <span class="home-action-icon"><i data-lucide="audio-lines"></i></span>
-              <span class="home-action-copy">
-                <strong>語音聊天</strong>
-                <small id="homeVoiceStatus">準備連線</small>
-              </span>
-              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
-            </button>
-            <button class="home-quick-action is-soul" type="button" data-home-action="soul">
-              <span class="home-action-icon"><i data-lucide="heart-handshake"></i></span>
-              <span class="home-action-copy">
-                <strong>靈魂配對</strong>
-                <small id="homeSoulStatus">尋找同房真人</small>
-              </span>
-              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
-            </button>
-            <button class="home-quick-action is-room" type="button" data-home-action="room">
-              <span class="home-action-icon"><i data-lucide="shuffle"></i></span>
-              <span class="home-action-copy">
-                <strong>房間配對</strong>
-                <small id="homeRoomStatus">隨機語音房</small>
-              </span>
-              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
-            </button>
-          </section>
+        <section class="view party-view" id="rooms-view" aria-labelledby="roomsTitle">
           <section class="real-user-notice" id="realUserNotice" aria-live="polite" hidden></section>
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Live Room</p>
-              <h2 id="roomsTitle">多人連線房</h2>
+              <p class="eyebrow">Party</p>
+              <h2 id="roomsTitle">派對語音房</h2>
             </div>
             <div class="segmented-control" role="tablist" aria-label="房間分類">
               <button class="is-active" type="button">推薦</button>
@@ -162,11 +131,11 @@
           </div>
         </section>
 
-        <section class="view" id="profile-view" aria-labelledby="profileTitle">
+        <section class="view account-view" id="profile-view" aria-labelledby="profileTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">My Profile</p>
-              <h2 id="profileTitle">個人檔案</h2>
+              <p class="eyebrow">My Account</p>
+              <h2 id="profileTitle">帳戶與個人檔案</h2>
             </div>
             <button class="ghost-action" type="button" id="saveProfileBtn">
               <i data-lucide="save"></i>
@@ -205,17 +174,44 @@
           </div>
         </section>
 
-        <section class="view" id="explore-view" aria-labelledby="exploreTitle">
+        <section class="view is-active home-view" id="explore-view" aria-labelledby="exploreTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Discover</p>
-              <h2 id="exploreTitle">滑卡探索</h2>
+              <p class="eyebrow">Ping</p>
+              <h2 id="exploreTitle">認識新朋友</h2>
             </div>
             <button class="ghost-action" type="button" id="resetFiltersBtn">
               <i data-lucide="rotate-ccw"></i>
               <span>重設條件</span>
             </button>
           </div>
+
+          <section class="home-quick-actions" aria-label="三個快速互動功能">
+            <button class="home-quick-action is-voice" type="button" data-home-action="voice">
+              <span class="home-action-icon"><i data-lucide="audio-lines"></i></span>
+              <span class="home-action-copy">
+                <strong>語音聊天</strong>
+                <small id="homeVoiceStatus">準備連線</small>
+              </span>
+              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
+            </button>
+            <button class="home-quick-action is-soul" type="button" data-home-action="soul">
+              <span class="home-action-icon"><i data-lucide="heart-handshake"></i></span>
+              <span class="home-action-copy">
+                <strong>靈魂配對</strong>
+                <small id="homeSoulStatus">尋找真人會員</small>
+              </span>
+              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
+            </button>
+            <button class="home-quick-action is-room" type="button" data-home-action="room">
+              <span class="home-action-icon"><i data-lucide="shuffle"></i></span>
+              <span class="home-action-copy">
+                <strong>房間配對</strong>
+                <small id="homeRoomStatus">隨機語音房</small>
+              </span>
+              <i class="home-action-arrow" data-lucide="arrow-up-right"></i>
+            </button>
+          </section>
 
           <div class="discover-layout">
             <aside class="filter-panel" id="discoverFilters"></aside>
@@ -242,15 +238,15 @@
           </div>
         </section>
 
-        <section class="view" id="chat-view" aria-labelledby="chatTitle">
+        <section class="view messages-view" id="chat-view" aria-labelledby="chatTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Messages</p>
-              <h2 id="chatTitle">聊天中心</h2>
+              <p class="eyebrow">Friends</p>
+              <h2 id="chatTitle">好友訊息</h2>
             </div>
             <button class="ghost-action" type="button" id="newChatBtn">
-              <i data-lucide="message-circle-plus"></i>
-              <span>新增話題</span>
+              <i data-lucide="user-round-search"></i>
+              <span>尋找朋友</span>
             </button>
           </div>
 
@@ -273,11 +269,11 @@
           </div>
         </section>
 
-        <section class="view" id="moments-view" aria-labelledby="momentsTitle">
+        <section class="view forum-view" id="moments-view" aria-labelledby="momentsTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Moments</p>
-              <h2 id="momentsTitle">動態廣場</h2>
+              <p class="eyebrow">Forum</p>
+              <h2 id="momentsTitle">論壇動態</h2>
             </div>
             <div class="segmented-control" role="tablist" aria-label="動態分類">
               <button class="is-active" type="button" data-moment-filter="全部">全部</button>
@@ -312,11 +308,11 @@
           </div>
         </section>
 
-        <section class="view" id="games-view" aria-labelledby="gamesTitle">
+        <section class="view games-view" id="games-view" aria-labelledby="gamesTitle">
           <div class="section-heading">
             <div>
               <p class="eyebrow">Play Together</p>
-              <h2 id="gamesTitle">真人共玩遊戲廳</h2>
+              <h2 id="gamesTitle">一起玩遊戲</h2>
             </div>
             <button class="ghost-action" type="button" id="backToLiveRoomBtn">
               <i data-lucide="radio"></i>

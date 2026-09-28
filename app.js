@@ -172,7 +172,7 @@ const quizQuestions = [
 ];
 
 const memoryValues = ["咖啡", "電影", "音樂", "料理", "展覽", "夜景"];
-const STORAGE_KEY = "pair-room-state-v2";
+const STORAGE_KEY = "pair-room-state-v3";
 const CONNECTION_KEY = "pair-room-connection-v1";
 const PUBLIC_REMOTE_URL = "https://pair-room-dating-site.vercel.app";
 const TRYSTERO_MODULE_URL = "https://esm.sh/trystero@0.25.2?bundle";
@@ -290,6 +290,27 @@ const partyGameCatalog = {
     description: "房內同步答題，看誰最先答對。",
   },
 };
+
+const partyGameGroups = [
+  {
+    label: "破冰與默契",
+    description: "用輕鬆題目自然開話題",
+    icon: "heart-handshake",
+    modes: ["chemistry", "vibe", "truth", "story", "doodle"],
+  },
+  {
+    label: "即時派對",
+    description: "房內同步搶分、反應與骰子遊戲",
+    icon: "sparkles",
+    modes: ["reaction", "spark", "orbit", "liar", "highroll", "rushdice"],
+  },
+  {
+    label: "桌遊與牌局",
+    description: "免費共玩，不含現金或兌獎機制",
+    icon: "gamepad-2",
+    modes: ["highcard", "oldmaid", "texas", "rummy", "mahjong", "uno", "monopoly", "memory", "quiz", "roulette", "slots"],
+  },
+];
 
 const partyVisualPresets = {
   social: {
@@ -550,7 +571,7 @@ const marketAdvantages = [
 ];
 
 const state = {
-  activeView: "rooms",
+  activeView: "explore",
   accountSystemEnabled: false,
   authenticated: false,
   authUserId: "",
@@ -1631,11 +1652,6 @@ function renderHomeQuickActions() {
   const voiceStatus = $("#homeVoiceStatus");
   const soulStatus = $("#homeSoulStatus");
   const roomStatus = $("#homeRoomStatus");
-  const roomsTitle = $("#roomsTitle");
-
-  if (roomsTitle) {
-    roomsTitle.textContent = state.accountSystemEnabled && state.authenticated ? "真人會員多人房" : "多人連線房";
-  }
 
   if (document.documentElement.dataset.realUsers === "setup") {
     if (voiceStatus) voiceStatus.textContent = "會員服務尚未開通";
@@ -1685,6 +1701,7 @@ async function handleHomeQuickAction(action) {
   }
 
   if (action === "voice") {
+    setView("rooms");
     if (state.micOn) {
       showToast("你已在目前語音房");
     } else {
@@ -1695,16 +1712,23 @@ async function handleHomeQuickAction(action) {
   }
 
   if (action === "soul") {
-    scrollToMultiplayerPanel();
-    if (liveRoomPeers().length) {
+    if (state.accountSystemEnabled && state.authenticated) {
+      setView("explore");
+      showToast("右滑喜歡；互相喜歡後即可成為好友並開始私訊");
+    } else if (liveRoomPeers().length) {
+      setView("rooms");
+      scrollToMultiplayerPanel();
       showToast("從此房在線名單選擇一位真人加好友");
     } else {
+      setView("rooms");
+      scrollToMultiplayerPanel();
       showToast("目前尚未有其他在線真人，分享同一房號後即可配對");
     }
     return;
   }
 
   if (action === "room") {
+    setView("rooms");
     const availableRooms = rooms.filter((room) => room.active < room.capacity);
     const alternatives = availableRooms.filter((room) => room.id !== state.currentRoomId);
     const pool = alternatives.length ? alternatives : availableRooms;
@@ -1811,6 +1835,13 @@ function messageBelongsToMatch(message, match) {
 }
 
 function liveConversationItems() {
+  if (state.accountSystemEnabled) {
+    if (!state.authenticated) return [];
+    return [...conversations]
+      .filter((conversation) => conversation.type === "direct")
+      .sort((left, right) => Number(right.lastMessageAt || 0) - Number(left.lastMessageAt || 0));
+  }
+
   const room = roomById(state.currentRoomId);
   const roomMessages = liveSharedMessages().map((message) => ({
     id: message.id,
@@ -3050,6 +3081,45 @@ function renderPartyGamesLegacy() {
   syncIcons();
 }
 
+function renderPartyGameLibrary(activeMode) {
+  return partyGameGroups
+    .map((group) => {
+      const isOpen = group.modes.includes(activeMode);
+      return `
+        <details class="game-library-group" ${isOpen ? "open" : ""}>
+          <summary>
+            <span class="game-library-summary-icon"><i data-lucide="${group.icon}"></i></span>
+            <span class="game-library-summary-copy"><strong>${group.label}</strong><small>${group.description}</small></span>
+            <span class="game-library-count">${group.modes.length} 款</span>
+            <i class="game-library-chevron" data-lucide="chevron-down"></i>
+          </summary>
+          <div class="party-game-library">
+            ${group.modes
+              .map((id) => {
+                const item = partyGameCatalog[id];
+                const itemVisual = gameVisualForMode(id);
+                return `
+                  <button class="party-game-mode ${id === activeMode ? "is-active" : ""}" type="button" data-party-mode="${id}" style="--game-accent:${itemVisual.accent}; --game-accent-soft:${itemVisual.accentSoft};" aria-label="開啟 ${escapeHtml(item.name)}">
+                    <span class="party-game-media">
+                      <img class="party-game-cover" src="${itemVisual.cover}" alt="${escapeHtml(item.name)} 封面" loading="lazy" />
+                      <span class="party-game-icon"><i data-lucide="${item.icon}"></i></span>
+                    </span>
+                    <span class="party-mode-copy">
+                      <span class="party-mode-label">${itemVisual.badge}</span>
+                      <strong>${item.name}</strong>
+                      <small>${item.description}</small>
+                    </span>
+                  </button>
+                `;
+              })
+              .join("")}
+          </div>
+        </details>
+      `;
+    })
+    .join("");
+}
+
 function renderPartyGames() {
   const arena = $("#partyGameArena");
   if (!arena) return;
@@ -3109,26 +3179,9 @@ function renderPartyGames() {
         <button class="ghost-action" type="button" id="toggleMusicBtn"><i data-lucide="${state.musicEnabled ? "music-4" : "music-2"}"></i><span>${state.musicEnabled ? "Music on" : "Music off"}</span></button>
       </div>
     </div>
-    <div class="party-game-library">
-      ${Object.entries(partyGameCatalog)
-        .map(([id, item]) => {
-          const itemVisual = gameVisualForMode(id);
-          return `
-            <button class="party-game-mode ${id === mode ? "is-active" : ""}" type="button" data-party-mode="${id}" style="--game-accent:${itemVisual.accent}; --game-accent-soft:${itemVisual.accentSoft};" aria-label="Open ${escapeHtml(item.name)}">
-              <span class="party-game-media">
-                <img class="party-game-cover" src="${itemVisual.cover}" alt="${escapeHtml(item.name)} cover" loading="lazy" />
-                <span class="party-game-icon"><i data-lucide="${item.icon}"></i></span>
-              </span>
-              <span class="party-mode-copy">
-                <span class="party-mode-label">${itemVisual.badge}</span>
-                <strong>${item.name}</strong>
-                <small>${item.description}</small>
-              </span>
-            </button>
-          `;
-        })
-        .join("")}
-    </div>
+    <section class="party-game-library-groups" aria-label="可摺疊遊戲庫">
+      ${renderPartyGameLibrary(mode)}
+    </section>
     <div class="party-game-layout">
       <section class="party-game-stage" style="--game-accent:${visual.accent}; --game-accent-soft:${visual.accentSoft};">
         <div class="party-stage-head"><div><h3>${active.name}</h3><p>${active.description}</p></div><span class="party-round">ROUND ${Number(game.round || 1)}</span></div>
@@ -4563,60 +4616,64 @@ function matchesDiscoverFilters(person) {
 function renderExplore() {
   const filters = state.discoverFilters;
   $("#discoverFilters").innerHTML = `
-    <div class="panel-title">
-      <i data-lucide="sliders-horizontal"></i>
-      <h3>篩選條件</h3>
-    </div>
-    <div class="filter-grid">
-      <label>
-        <span>地區</span>
-        <select data-filter="city">${renderOptions(["全部", "台北", "新北", "桃園", "台中"], filters.city)}</select>
-      </label>
-      <label>
-        <span>年齡下限</span>
-        <input data-filter="ageMin" type="number" min="18" max="80" value="${filters.ageMin}" />
-      </label>
-      <label>
-        <span>年齡上限</span>
-        <input data-filter="ageMax" type="number" min="18" max="80" value="${filters.ageMax}" />
-      </label>
-      <label>
-        <span>身高下限</span>
-        <input data-filter="heightMin" type="number" min="120" max="230" value="${filters.heightMin}" />
-      </label>
-      <label>
-        <span>身高上限</span>
-        <input data-filter="heightMax" type="number" min="120" max="230" value="${filters.heightMax}" />
-      </label>
-      <label>
-        <span>星座</span>
-        <select data-filter="zodiac">${renderOptions(["全部", "牡羊座", "雙魚座", "處女座", "天秤座"], filters.zodiac)}</select>
-      </label>
-      <label>
-        <span>學歷</span>
-        <select data-filter="education">${renderOptions(["全部", "專科", "大學", "研究所"], filters.education)}</select>
-      </label>
-      <label>
-        <span>交往目標</span>
-        <select data-filter="goal">${renderOptions(["全部", "自然認識", "先從朋友", "穩定交往", "認真交往"], filters.goal)}</select>
-      </label>
-      <label>
-        <span>抽菸</span>
-        <select data-filter="smoking">${renderOptions(["不限", "不抽菸", "偶爾", "會抽菸"], filters.smoking)}</select>
-      </label>
-      <label>
-        <span>喝酒</span>
-        <select data-filter="drinking">${renderOptions(["不限", "不喝酒", "偶爾小酌", "社交場合"], filters.drinking)}</select>
-      </label>
-      <label class="full">
-        <span>興趣</span>
-        <select data-filter="interest">${renderOptions(["全部", ...allInterests()], filters.interest)}</select>
-      </label>
-    </div>
-    <div class="filter-note">
-      <i data-lucide="sparkles"></i>
-      <span>搜尋欄可同時找暱稱、職業、城市與興趣。</span>
-    </div>
+    <details class="discover-filter-fold">
+      <summary>
+        <span><i data-lucide="sliders-horizontal"></i> 配對條件</span>
+        <i data-lucide="chevron-down"></i>
+      </summary>
+      <div class="discover-filter-content">
+        <div class="filter-grid">
+          <label>
+            <span>地區</span>
+            <select data-filter="city">${renderOptions(["全部", "台北", "新北", "桃園", "台中"], filters.city)}</select>
+          </label>
+          <label>
+            <span>年齡下限</span>
+            <input data-filter="ageMin" type="number" min="18" max="80" value="${filters.ageMin}" />
+          </label>
+          <label>
+            <span>年齡上限</span>
+            <input data-filter="ageMax" type="number" min="18" max="80" value="${filters.ageMax}" />
+          </label>
+          <label>
+            <span>身高下限</span>
+            <input data-filter="heightMin" type="number" min="120" max="230" value="${filters.heightMin}" />
+          </label>
+          <label>
+            <span>身高上限</span>
+            <input data-filter="heightMax" type="number" min="120" max="230" value="${filters.heightMax}" />
+          </label>
+          <label>
+            <span>星座</span>
+            <select data-filter="zodiac">${renderOptions(["全部", "牡羊座", "雙魚座", "處女座", "天秤座"], filters.zodiac)}</select>
+          </label>
+          <label>
+            <span>學歷</span>
+            <select data-filter="education">${renderOptions(["全部", "專科", "大學", "研究所"], filters.education)}</select>
+          </label>
+          <label>
+            <span>交往目標</span>
+            <select data-filter="goal">${renderOptions(["全部", "自然認識", "先從朋友", "穩定交往", "認真交往"], filters.goal)}</select>
+          </label>
+          <label>
+            <span>抽菸</span>
+            <select data-filter="smoking">${renderOptions(["不限", "不抽菸", "偶爾", "會抽菸"], filters.smoking)}</select>
+          </label>
+          <label>
+            <span>喝酒</span>
+            <select data-filter="drinking">${renderOptions(["不限", "不喝酒", "偶爾小酌", "社交場合"], filters.drinking)}</select>
+          </label>
+          <label class="full">
+            <span>興趣</span>
+            <select data-filter="interest">${renderOptions(["全部", ...allInterests()], filters.interest)}</select>
+          </label>
+        </div>
+        <div class="filter-note">
+          <i data-lucide="sparkles"></i>
+          <span>搜尋欄可同時找暱稱、職業、城市與興趣。</span>
+        </div>
+      </div>
+    </details>
   `;
 
   $$("#discoverFilters [data-filter]").forEach((control) => {
@@ -5067,23 +5124,39 @@ function nextProfile(message) {
 function renderChat() {
   const conversations = liveConversationItems();
   if (!conversations.length) {
+    $("#chatForm").hidden = true;
+    $("#chatInput").value = "";
     $("#conversationList").innerHTML = "";
+    const isMemberMode = state.accountSystemEnabled;
+    const canAccessMessages = state.accountSystemEnabled && state.authenticated;
     $("#chatHeader").innerHTML = `
       <div class="chat-person">
         <img src="${userProfile.photo}" alt="${userProfile.name}" />
         <div>
-          <strong>真人聊天室</strong>
-          <span>先進入同房並完成配對</span>
+          <strong>${canAccessMessages ? "還沒有好友訊息" : isMemberMode ? "登入後查看好友訊息" : "真人聊天室"}</strong>
+          <span>${canAccessMessages ? "互相喜歡並接受好友邀請後，即可在這裡私訊。" : isMemberMode ? "登入真人會員後，才能安全檢視與傳送好友私訊。" : "先進入同房並完成配對"}</span>
         </div>
       </div>
     `;
-    $("#messageList").innerHTML = `<article class="message"><div class="message-meta"><strong>系統</strong><span>${currentTime()}</span></div><p>到「真人多人互動房」邀請或接受配對後，這裡就會變成真人即時聊天。</p></article>`;
+    $("#messageList").innerHTML = canAccessMessages
+      ? `<article class="message message-empty"><div class="message-meta"><strong>好友私訊</strong><span>${currentTime()}</span></div><p>先到首頁滑卡認識公開會員；雙方喜歡、成為好友後，就能在這裡安全傳送即時訊息。</p><button class="primary-action" type="button" id="findFriendsFromChat"><i data-lucide="user-round-search"></i><span>尋找朋友</span></button></article>`
+      : isMemberMode
+        ? `<article class="message message-empty"><div class="message-meta"><strong>真人好友訊息</strong><span>${currentTime()}</span></div><p>登入後才會顯示你的好友與訊息內容，未登入者不會看到任何私訊。</p><button class="primary-action" type="button" id="findFriendsFromChat"><i data-lucide="log-in"></i><span>登入會員</span></button></article>`
+      : `<article class="message"><div class="message-meta"><strong>系統</strong><span>${currentTime()}</span></div><p>到「真人多人互動房」邀請或接受配對後，這裡就會變成真人即時聊天。</p></article>`;
+    $("#findFriendsFromChat")?.addEventListener("click", () => {
+      if (state.accountSystemEnabled && !state.authenticated) {
+        window.dispatchEvent(new Event("pairroom:request-auth"));
+        return;
+      }
+      setView("explore");
+    });
     syncIcons();
     return;
   }
   if (!conversations.some((conversation) => conversation.id === state.activeConversationId)) {
     state.activeConversationId = conversations[0].id;
   }
+  $("#chatForm").hidden = false;
   $("#conversationList").innerHTML = conversations
     .map(
       (conversation) => `
@@ -5116,11 +5189,16 @@ function renderChat() {
         <span>${active.subtitle}</span>
       </div>
     </div>
-    <button class="ghost-action" type="button">
-      <i data-lucide="${active.type === "room" ? "radio" : "phone"}"></i>
-      <span>${active.type === "room" ? "房內共享" : "配對私訊"}</span>
+    <button class="ghost-action" type="button" id="chatVoiceInviteBtn">
+      <i data-lucide="${active.type === "room" ? "radio" : "mic-2"}"></i>
+      <span>${active.type === "room" ? "房內共享" : active.type === "direct" ? "邀請語音" : "配對私訊"}</span>
     </button>
   `;
+
+  $("#chatVoiceInviteBtn")?.addEventListener("click", () => {
+    setView("rooms");
+    showToast(active.type === "direct" ? `已前往派對房，可邀請 ${active.title} 語音聊天` : "已前往目前派對房");
+  });
 
   $("#messageList").innerHTML = active.messages.length
     ? active.messages
@@ -5142,6 +5220,9 @@ function renderChat() {
   if (input) {
     input.placeholder = active.type === "room" ? "輸入房內共享訊息" : `傳訊息給 ${active.title}`;
   }
+  if (state.activeView === "chat" && active.type === "direct" && active.unread && active.peerId) {
+    window.dispatchEvent(new CustomEvent("pairroom:direct-message-read", { detail: { peerId: active.peerId } }));
+  }
   syncIcons();
 }
 
@@ -5150,6 +5231,14 @@ async function sendMessage(text) {
   const value = String(text || "").trim();
   if (!active || !value) return;
   triggerGameFeedback("send");
+  if (active.type === "direct" && active.peerId) {
+    window.dispatchEvent(
+      new CustomEvent("pairroom:direct-message", {
+        detail: { recipientId: active.peerId, body: value },
+      }),
+    );
+    return;
+  }
   if (active.type === "room") {
     await sendLiveMessage(value);
     return;
@@ -6106,6 +6195,15 @@ function wireEvents() {
   });
 
   $("#newChatBtn").addEventListener("click", () => {
+    if (state.accountSystemEnabled) {
+      if (!state.authenticated) {
+        window.dispatchEvent(new Event("pairroom:request-auth"));
+        return;
+      }
+      setView("explore");
+      showToast("從首頁滑卡建立互相喜歡後，就能在好友訊息中開始聊天");
+      return;
+    }
     const prompt = prompts[Math.floor(Math.random() * prompts.length)];
     $("#chatInput").value = prompt.text;
     $("#chatInput").focus();
@@ -6165,7 +6263,7 @@ function setAuthMode({ enabled = false, authenticated = false } = {}) {
   renderMemberDirectory();
 }
 
-function activateRealUsers({ user, profile, people: memberPeople, moments: memberMoments } = {}) {
+function activateRealUsers({ user, profile, people: memberPeople, moments: memberMoments, conversations: memberConversations } = {}) {
   state.accountSystemEnabled = true;
   state.authenticated = true;
   state.authUserId = String(user?.id || "");
@@ -6173,7 +6271,7 @@ function activateRealUsers({ user, profile, people: memberPeople, moments: membe
   normalizeUserProfile();
   people = Array.isArray(memberPeople) ? memberPeople : [];
   moments.splice(0, moments.length, ...(Array.isArray(memberMoments) ? memberMoments : []));
-  conversations.splice(0, conversations.length);
+  conversations.splice(0, conversations.length, ...(Array.isArray(memberConversations) ? memberConversations : []));
   state.activeConversationId = "";
   state.aiTargetId = people[0]?.id || "";
   state.profileIndex = 0;
@@ -6208,6 +6306,25 @@ function replaceRealMoments(memberMoments) {
   renderMoments();
 }
 
+function replaceRealConversations(memberConversations) {
+  if (!state.accountSystemEnabled || !state.authenticated) return;
+  conversations.splice(0, conversations.length, ...(Array.isArray(memberConversations) ? memberConversations : []));
+  if (!conversations.some((conversation) => conversation.id === state.activeConversationId)) {
+    state.activeConversationId = conversations[0]?.id || "";
+  }
+  if (state.activeView === "chat") renderChat();
+}
+
+function openFriendChat(peerId) {
+  const conversation = conversations.find((item) => item.type === "direct" && item.peerId === peerId);
+  if (!conversation) {
+    showToast("好友已建立，正在載入私訊");
+    return;
+  }
+  state.activeConversationId = conversation.id;
+  setView("chat");
+}
+
 window.PairRoomSocial = {
   showToast,
   closeConnectionGate,
@@ -6215,6 +6332,8 @@ window.PairRoomSocial = {
   activateRealUsers,
   replaceRealPeople,
   replaceRealMoments,
+  replaceRealConversations,
+  openFriendChat,
   getRealtimeIdentity() {
     return {
       sessionId: ensureSessionId(),
